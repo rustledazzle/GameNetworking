@@ -1,0 +1,87 @@
+NETWORK SETTINGS AUDIT
+=======================
+Project: Protocol Zero
+Course: BSIT 4122 - Game Networking Lab
+Date: July 28, 2026
+Submitted By: Anima, Yokoyama, Mondragon
+
+========================================
+CONFIGURATION VERIFICATION
+========================================
+
+1. Network Transport: UnityTransport
+2. Server Address: 127.0.0.1
+3. Port Number: 7777
+4. Run In Background: TRUE (Enabled)
+5. Windowed Mode: TRUE (Enabled)
+6. Resolution: 960 x 540
+
+========================================
+NETWORK MANAGER SETUP
+========================================
+
+- Player Prefab: [None] (Using SpawnManager)
+- Auto Create Player Prefab: FALSE
+- Dont Destroy On Load: TRUE
+- Force Same Prefabs: TRUE
+
+========================================
+REGISTERED NETWORK PREFABS
+========================================
+
+✅ Player
+✅ Bullet
+✅ Zombie (Working Blender model)
+✅ All prefabs registered in NetworkManager
+
+========================================
+SCENE SETUP
+========================================
+
+StartMenu Scene:
+- Host Button ✅
+- Client Button ✅
+- Quit Button ✅
+- Status Text ✅
+
+GameScene (SampleScene):
+- NetworkManager ✅
+- SpawnManager ✅
+- GameSceneManager ✅
+- ZombieSpawner ✅
+- Main Camera ✅
+- EventSystem ✅
+
+========================================
+FUNCTIONALITY TESTING
+========================================
+
+✅ Host starts via StartMenu button
+✅ Client connects via StartMenu button
+✅ Host player spawns automatically
+✅ Client player spawns automatically
+✅ Both players visible on both screens
+✅ Zombies spawn automatically
+✅ Zombies move toward players
+✅ Host can shoot and kill zombies
+✅ Client can shoot and kill zombies
+✅ Health system works
+✅ No duplicate players
+✅ No audio listener errors
+✅ Mouse control works on both instances
+✅ No freezing when switching focus
+
+========================================
+TESTING ENVIRONMENT
+========================================
+
+- Unity Editor: Host (Started via StartMenu)
+- Standalone Build: Client (Started via StartMenu)
+- Both instances responsive: YES
+- No stuttering: YES
+- Network sync: YES
+
+========================================
+SUBMITTED BY: Anima, Yokoyama, Mondragon
+DATE: July 28, 2026
+========================================
