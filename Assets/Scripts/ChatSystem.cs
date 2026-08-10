@@ -25,18 +25,10 @@ public class ChatManager : NetworkBehaviour
     private bool isChatActive = false;
     private string playerName = "Player";
 
-    // ✅ FIX: Public property to access isChatActive
     public bool IsChatActive => isChatActive;
 
     private void Start()
     {
-        // Get player name from somewhere (or generate one)
-        if (IsOwner)
-        {
-            playerName = $"Player {OwnerClientId}";
-        }
-
-        // Setup UI
         if (chatInput != null)
         {
             chatInput.onSubmit.AddListener(OnSendMessage);
@@ -54,7 +46,6 @@ public class ChatManager : NetworkBehaviour
             chatPanel.SetActive(false);
         }
 
-        // Subscribe to chat events
         if (NetworkManager.Singleton != null)
         {
             NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
@@ -64,11 +55,12 @@ public class ChatManager : NetworkBehaviour
 
     private void Update()
     {
-        // Only owner can open chat
-        if (!IsOwner) return;
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsConnectedClient)
+            return;
 
-        // Toggle chat with T key
-        if (Input.GetKeyDown(toggleChatKey))
+        // ✅ FIX: Only toggle chat with T key when chat is CLOSED
+        // This prevents "t" from closing chat when typing
+        if (!isChatActive && Input.GetKeyDown(toggleChatKey))
         {
             ToggleChat();
         }
@@ -158,12 +150,13 @@ public class ChatManager : NetworkBehaviour
 
     private void SendMessage()
     {
-        if (!IsOwner) return;
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsConnectedClient)
+            return;
+
         if (chatInput == null) return;
 
         string message = chatInput.text.Trim();
 
-        // Validate message
         if (string.IsNullOrEmpty(message))
         {
             chatInput.text = "";
@@ -177,7 +170,6 @@ public class ChatManager : NetworkBehaviour
             return;
         }
 
-        // Check cooldown
         if (Time.time - lastMessageTime < messageCooldown)
         {
             AddMessageToUI("[SYSTEM] Please wait before sending another message.", Color.yellow);
@@ -185,7 +177,6 @@ public class ChatManager : NetworkBehaviour
             return;
         }
 
-        // Send to server
         SubmitMessageServerRpc(message);
         chatInput.text = "";
         lastMessageTime = Time.time;
@@ -194,27 +185,19 @@ public class ChatManager : NetworkBehaviour
     [ServerRpc(RequireOwnership = false)]
     private void SubmitMessageServerRpc(string message, ServerRpcParams rpcParams = default)
     {
-        // Validate on server
         if (string.IsNullOrEmpty(message) || message.Length > maxMessageLength)
-        {
             return;
-        }
 
-        // Get client ID
         ulong clientId = rpcParams.Receive.SenderClientId;
-
-        // Build final message
         string playerName = GetPlayerName(clientId);
         string finalMessage = $"[{playerName}]: {message}";
 
-        // Broadcast to all clients
         BroadcastMessageClientRpc(finalMessage);
     }
 
     [ClientRpc]
     private void BroadcastMessageClientRpc(string message)
     {
-        // Add to chat UI on all clients
         AddMessageToUI(message, Color.white);
     }
 
@@ -222,23 +205,16 @@ public class ChatManager : NetworkBehaviour
     {
         if (chatMessages == null) return;
 
-        // Add to history
         messageHistory.Add(message);
         if (messageHistory.Count > maxMessages)
-        {
             messageHistory.RemoveAt(0);
-        }
 
-        // Update UI
         string fullText = "";
         foreach (string msg in messageHistory)
-        {
             fullText += msg + "\n";
-        }
 
         chatMessages.text = fullText;
 
-        // Auto-scroll to bottom
         if (chatScrollRect != null)
         {
             Canvas.ForceUpdateCanvases();
@@ -248,35 +224,26 @@ public class ChatManager : NetworkBehaviour
 
     private string GetPlayerName(ulong clientId)
     {
-        // Get player name from NetworkManager or generate one
         if (NetworkManager.Singleton != null && NetworkManager.Singleton.ConnectedClients.ContainsKey(clientId))
-        {
             return $"Player {clientId}";
-        }
         return $"Player {clientId}";
     }
 
     private void OnClientConnected(ulong clientId)
     {
         if (IsServer)
-        {
             BroadcastMessageClientRpc($"[SYSTEM] Player {clientId} joined the game!");
-        }
     }
 
     private void OnClientDisconnected(ulong clientId)
     {
         if (IsServer)
-        {
             BroadcastMessageClientRpc($"[SYSTEM] Player {clientId} left the game.");
-        }
     }
 
-    // ✅ FIX: Changed to public override
     public override void OnDestroy()
     {
         base.OnDestroy();
-
         if (NetworkManager.Singleton != null)
         {
             NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;

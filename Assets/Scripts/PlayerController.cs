@@ -1,4 +1,4 @@
-using Unity.Netcode;
+﻿using Unity.Netcode;
 using UnityEngine;
 
 public class PlayerController : NetworkBehaviour
@@ -7,15 +7,19 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private float mouseSensitivity = 1.5f;
     [SerializeField] private float maxLookAngle = 80f;
 
+    [Header("Movement")]
+    [SerializeField] private float moveSpeed = 5f;
+    [SerializeField] private float sprintMultiplier = 1.5f;
+
     [Header("Camera")]
     [SerializeField] private Transform playerCamera;
     [SerializeField] private Vector3 cameraOffset = new Vector3(0, 1.7f, 0);
 
     [Header("Shooting")]
     [SerializeField] private GameObject projectilePrefab;
-    [SerializeField] private Transform shootPoint;
     [SerializeField] private float fireRate = 0.15f;
     [SerializeField] private float projectileSpeed = 30f;
+    [SerializeField] private float bulletSpawnOffset = 0.5f; // How far from camera the bullet spawns
 
     [Header("Chat")]
     [SerializeField] private ChatManager chatManager;
@@ -26,6 +30,9 @@ public class PlayerController : NetworkBehaviour
     private bool isCursorLocked = true;
     private bool isInitialized = false;
     private Transform cachedTransform;
+
+    private Vector3 moveDirection;
+    private float currentSpeed;
 
     private void Awake()
     {
@@ -43,10 +50,13 @@ public class PlayerController : NetworkBehaviour
             isInitialized = true;
             enabled = true;
 
-            // Find ChatManager if not assigned
             if (chatManager == null)
             {
                 chatManager = FindObjectOfType<ChatManager>();
+                if (chatManager != null)
+                {
+                    Debug.Log($"[PlayerController] ChatManager found automatically!");
+                }
             }
 
             Debug.Log($"Player {OwnerClientId} initialized as OWNER");
@@ -119,17 +129,51 @@ public class PlayerController : NetworkBehaviour
     {
         if (!IsOwner || !isInitialized) return;
 
-        // Check if chat is active - if so, don't process game input
         if (chatManager != null && chatManager.IsChatActive)
         {
-            // Still allow cursor lock/unlock when chat is active
             HandleCursorLock();
             return;
         }
 
+        HandleMovement();
         HandleMouseLook();
         HandleShooting();
         HandleCursorLock();
+    }
+
+    private void HandleMovement()
+    {
+        float horizontal = Input.GetAxis("Horizontal");
+        float vertical = Input.GetAxis("Vertical");
+
+        Vector3 forward = cachedTransform.forward;
+        Vector3 right = cachedTransform.right;
+
+        forward.y = 0;
+        right.y = 0;
+        forward.Normalize();
+        right.Normalize();
+
+        moveDirection = (forward * vertical + right * horizontal).normalized;
+
+        bool isSprinting = Input.GetKey(KeyCode.LeftShift);
+        currentSpeed = isSprinting ? moveSpeed * sprintMultiplier : moveSpeed;
+
+        if (moveDirection.magnitude > 0.1f)
+        {
+            cachedTransform.position += moveDirection * currentSpeed * Time.deltaTime;
+
+            if (IsOwner)
+            {
+                UpdatePositionServerRpc(cachedTransform.position);
+            }
+        }
+    }
+
+    [ServerRpc]
+    private void UpdatePositionServerRpc(Vector3 newPosition)
+    {
+        cachedTransform.position = newPosition;
     }
 
     private void HandleMouseLook()
@@ -156,27 +200,30 @@ public class PlayerController : NetworkBehaviour
 
             if (IsOwner)
             {
-                // If we're the HOST (Server + Client), spawn directly on server
+                // Get direction from camera
+                Vector3 shootDir = playerCamera.forward;
+                // Spawn bullet in front of camera (NOT inside the player!)
+                Vector3 spawnPos = playerCamera.position + shootDir * bulletSpawnOffset;
+
                 if (IsServer)
                 {
-                    ShootServerDirect();
+                    ShootServerDirect(spawnPos, shootDir);
                 }
                 else
                 {
-                    // Client: Predict bullet locally, then tell server
-                    ClientPredictShoot();
-                    ShootServerRpc(shootPoint.position, shootPoint.rotation);
+                    ClientPredictShoot(spawnPos, shootDir);
+                    ShootServerRpc(spawnPos, shootDir);
                 }
             }
         }
     }
 
-    // Host only - spawns bullet directly on server
-    private void ShootServerDirect()
+    private void ShootServerDirect(Vector3 spawnPos, Vector3 direction)
     {
-        if (shootPoint == null || projectilePrefab == null) return;
+        if (projectilePrefab == null) return;
 
-        GameObject projectile = Instantiate(projectilePrefab, shootPoint.position, shootPoint.rotation);
+        Quaternion rotation = Quaternion.LookRotation(direction);
+        GameObject projectile = Instantiate(projectilePrefab, spawnPos, rotation);
         NetworkObject netObj = projectile.GetComponent<NetworkObject>();
 
         if (netObj != null)
@@ -186,34 +233,35 @@ public class PlayerController : NetworkBehaviour
             Rigidbody rb = projectile.GetComponent<Rigidbody>();
             if (rb != null)
             {
-                rb.velocity = shootPoint.forward * projectileSpeed;
+                rb.velocity = direction * projectileSpeed;
                 rb.angularVelocity = Vector3.zero;
             }
         }
     }
 
-    // Client fires immediately (no delay!)
-    private void ClientPredictShoot()
+    private void ClientPredictShoot(Vector3 spawnPos, Vector3 direction)
     {
-        if (shootPoint == null || projectilePrefab == null) return;
+        if (projectilePrefab == null) return;
 
-        GameObject projectile = Instantiate(projectilePrefab, shootPoint.position, shootPoint.rotation);
+        Quaternion rotation = Quaternion.LookRotation(direction);
+        GameObject projectile = Instantiate(projectilePrefab, spawnPos, rotation);
 
         Rigidbody rb = projectile.GetComponent<Rigidbody>();
         if (rb != null)
         {
-            rb.velocity = shootPoint.forward * projectileSpeed;
+            rb.velocity = direction * projectileSpeed;
         }
 
         Destroy(projectile, 3f);
     }
 
     [ServerRpc]
-    private void ShootServerRpc(Vector3 spawnPos, Quaternion spawnRot)
+    private void ShootServerRpc(Vector3 spawnPos, Vector3 direction)
     {
-        if (shootPoint == null || projectilePrefab == null) return;
+        if (projectilePrefab == null) return;
 
-        GameObject projectile = Instantiate(projectilePrefab, spawnPos, spawnRot);
+        Quaternion rotation = Quaternion.LookRotation(direction);
+        GameObject projectile = Instantiate(projectilePrefab, spawnPos, rotation);
         NetworkObject netObj = projectile.GetComponent<NetworkObject>();
 
         if (netObj != null)
@@ -223,7 +271,7 @@ public class PlayerController : NetworkBehaviour
             Rigidbody rb = projectile.GetComponent<Rigidbody>();
             if (rb != null)
             {
-                rb.velocity = spawnRot * Vector3.forward * projectileSpeed;
+                rb.velocity = direction * projectileSpeed;
                 rb.angularVelocity = Vector3.zero;
             }
         }
@@ -231,7 +279,6 @@ public class PlayerController : NetworkBehaviour
 
     private void HandleCursorLock()
     {
-        // Skip cursor lock if chat is active
         if (chatManager != null && chatManager.IsChatActive) return;
 
         if (Input.GetKeyDown(KeyCode.Escape))

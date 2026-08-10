@@ -1,13 +1,16 @@
 using Unity.Netcode;
 using UnityEngine;
+using System.Collections;
 
 public class NetworkPositionSync : NetworkBehaviour
 {
     [Header("Sync Settings")]
     [SerializeField] private float syncRate = 0.05f; // 20 times per second
+    [SerializeField] private float positionThreshold = 0.01f;
 
     private float timer = 0f;
     private Vector3 lastSentPosition;
+    private Vector3 lastReceivedPosition;
 
     public override void OnNetworkSpawn()
     {
@@ -27,7 +30,8 @@ public class NetworkPositionSync : NetworkBehaviour
         {
             timer = 0f;
 
-            if (Vector3.Distance(transform.position, lastSentPosition) > 0.01f)
+            float distance = Vector3.Distance(transform.position, lastSentPosition);
+            if (distance > positionThreshold)
             {
                 UpdatePositionServerRpc(transform.position);
                 lastSentPosition = transform.position;
@@ -47,11 +51,12 @@ public class NetworkPositionSync : NetworkBehaviour
     {
         if (IsOwner) return;
 
+        // Smooth interpolation for other clients
         StopAllCoroutines();
         StartCoroutine(SmoothMove(newPos));
     }
 
-    private System.Collections.IEnumerator SmoothMove(Vector3 targetPos)
+    private IEnumerator SmoothMove(Vector3 targetPos)
     {
         float duration = 0.1f;
         float elapsed = 0f;

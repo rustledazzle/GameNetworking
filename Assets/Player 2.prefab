@@ -174,8 +174,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  GlobalObjectIdHash: 1363847579
-  InScenePlacedSourceGlobalObjectIdHash: 0
+  GlobalObjectIdHash: 3355793550
+  InScenePlacedSourceGlobalObjectIdHash: 3355793550
   AlwaysReplicateAsRoot: 0
   SynchronizeTransform: 1
   ActiveSceneSynchronization: 0
@@ -197,12 +197,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   mouseSensitivity: 1.5
   maxLookAngle: 80
+  moveSpeed: 5
+  sprintMultiplier: 1.5
   playerCamera: {fileID: 0}
   cameraOffset: {x: 0, y: 1.7, z: 0}
   projectilePrefab: {fileID: 6613678652216019174, guid: b0bab35f5eadf744ebf2b30228803f8e, type: 3}
-  shootPoint: {fileID: 5497454595122869237}
   fireRate: 0.15
   projectileSpeed: 30
+  bulletSpawnOffset: 3
+  chatManager: {fileID: 0}
 --- !u!114 &-388558442391460929
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -232,6 +235,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   syncRate: 0.05
+  positionThreshold: 0.01
 --- !u!136 &3528014088596587918
 CapsuleCollider:
   m_ObjectHideFlags: 0
