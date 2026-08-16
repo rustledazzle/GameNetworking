@@ -11,4 +11,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/SampleScene.unity
     guid: 9fc0d4010bbf28b4594072e72b8655ab
+  - enabled: 1
+    path: Assets/Scenes/CyberLobby.unity
+    guid: 3811e18b94a2a2e4ea3008b4ea1b7fad
   m_configObjects: {}
