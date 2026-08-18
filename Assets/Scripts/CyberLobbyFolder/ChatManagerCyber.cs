@@ -86,16 +86,6 @@ public class ChatManagerCyber : NetworkBehaviour
 
     private void Update()
     {
-        // TEMPORARY: Force content height to a large value
-        if (isChatActive && Input.GetKeyDown(KeyCode.F1))
-        {
-            if (chatScrollRect != null && chatScrollRect.content != null)
-            {
-                chatScrollRect.content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 500f);
-                Debug.Log($"Content height forced to 500");
-                RefreshLayout();
-            }
-        }
         if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsConnectedClient)
             return;
 
@@ -130,7 +120,7 @@ public class ChatManagerCyber : NetworkBehaviour
                     isScrolling = false;
             }
 
-            // ✅ PAGE UP - Scroll up (older messages)
+            // PAGE UP - Scroll up (older messages)
             if (Input.GetKeyDown(KeyCode.PageUp))
             {
                 float newPos = chatScrollRect.verticalNormalizedPosition + 0.2f;
@@ -139,7 +129,7 @@ public class ChatManagerCyber : NetworkBehaviour
                 Debug.Log($"Page Up - Position: {chatScrollRect.verticalNormalizedPosition:F2}");
             }
 
-            // ✅ PAGE DOWN - Scroll down (newer messages)
+            // PAGE DOWN - Scroll down (newer messages)
             if (Input.GetKeyDown(KeyCode.PageDown))
             {
                 float newPos = chatScrollRect.verticalNormalizedPosition - 0.2f;
@@ -358,6 +348,14 @@ public class ChatManagerCyber : NetworkBehaviour
 
         if (!isScrolling)
             RefreshLayout();
+    }
+
+    public void AddSystemMessage(string message)
+    {
+        if (IsOwner)
+        {
+            AddMessageToUI(message, new Color(0f, 1f, 0.4f)); // Neon green
+        }
     }
 
     private void ForceContentHeight()

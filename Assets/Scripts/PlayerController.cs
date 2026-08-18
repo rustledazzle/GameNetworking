@@ -19,7 +19,11 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private GameObject projectilePrefab;
     [SerializeField] private float fireRate = 0.15f;
     [SerializeField] private float projectileSpeed = 30f;
-    [SerializeField] private float bulletSpawnOffset = 0.5f; // How far from camera the bullet spawns
+    [SerializeField] private float bulletSpawnOffset = 0.5f;
+    [SerializeField] private int ammoPerShot = 1;
+
+    [Header("HUD")]
+    [SerializeField] private PlayerHUD playerHUD;
 
     [Header("Chat")]
     [SerializeField] private ChatManager chatManager;
@@ -50,13 +54,16 @@ public class PlayerController : NetworkBehaviour
             isInitialized = true;
             enabled = true;
 
+            // Find ChatManager
             if (chatManager == null)
             {
                 chatManager = FindObjectOfType<ChatManager>();
-                if (chatManager != null)
-                {
-                    Debug.Log($"[PlayerController] ChatManager found automatically!");
-                }
+            }
+
+            // Find HUD
+            if (playerHUD == null)
+            {
+                playerHUD = FindObjectOfType<PlayerHUD>();
             }
 
             Debug.Log($"Player {OwnerClientId} initialized as OWNER");
@@ -69,6 +76,12 @@ public class PlayerController : NetworkBehaviour
             foreach (Camera c in cams)
             {
                 c.enabled = false;
+            }
+
+            // Disable HUD for non-owner
+            if (playerHUD != null)
+            {
+                playerHUD.gameObject.SetActive(false);
             }
 
             Debug.Log($"Player {OwnerClientId} is NOT owner - disabled");
@@ -138,6 +151,7 @@ public class PlayerController : NetworkBehaviour
         HandleMovement();
         HandleMouseLook();
         HandleShooting();
+        HandleReload();
         HandleCursorLock();
     }
 
@@ -196,13 +210,24 @@ public class PlayerController : NetworkBehaviour
     {
         if (Input.GetMouseButtonDown(0) && Time.time >= nextFireTime)
         {
+            // Check ammo
+            if (playerHUD != null && !playerHUD.CanShoot())
+            {
+                Debug.Log("No ammo! Press R to reload.");
+                return;
+            }
+
             nextFireTime = Time.time + fireRate;
 
             if (IsOwner)
             {
-                // Get direction from camera
+                // Use ammo
+                if (playerHUD != null)
+                {
+                    playerHUD.UseAmmo(ammoPerShot);
+                }
+
                 Vector3 shootDir = playerCamera.forward;
-                // Spawn bullet in front of camera (NOT inside the player!)
                 Vector3 spawnPos = playerCamera.position + shootDir * bulletSpawnOffset;
 
                 if (IsServer)
@@ -214,6 +239,17 @@ public class PlayerController : NetworkBehaviour
                     ClientPredictShoot(spawnPos, shootDir);
                     ShootServerRpc(spawnPos, shootDir);
                 }
+            }
+        }
+    }
+
+    private void HandleReload()
+    {
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            if (playerHUD != null)
+            {
+                playerHUD.Reload();
             }
         }
     }
@@ -305,6 +341,17 @@ public class PlayerController : NetworkBehaviour
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
+    }
+
+    // Public method to take damage from zombies
+    public void TakeDamage(float damage)
+    {
+        if (!IsOwner) return;
+
+        if (playerHUD != null)
+        {
+            playerHUD.TakeDamage(damage);
         }
     }
 

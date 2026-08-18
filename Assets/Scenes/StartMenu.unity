@@ -1671,8 +1671,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
-  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+    rgba: 4278761998
+  m_fontColor: {r: 0.056836214, g: 0.7283019, b: 0.03160547, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -1772,7 +1772,7 @@ MonoBehaviour:
   clientButton: {fileID: 949873075}
   quitButton: {fileID: 667876636}
   statusText: {fileID: 694304062}
-  gameSceneName: SampleScene
+  gameSceneName: CyberLobby
 --- !u!4 &1891970381
 Transform:
   m_ObjectHideFlags: 0
@@ -1838,7 +1838,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.27942535, g: 0.018832278, b: 0.4339623, a: 1}
+  m_Color: {r: 0.23137255, g: 0, b: 0.19246197, a: 0.78431374}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
