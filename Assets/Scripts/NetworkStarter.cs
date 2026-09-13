@@ -1,4 +1,4 @@
-using Unity.Netcode;
+using Mirror;
 using UnityEngine;
 
 public class NetworkStarter : MonoBehaviour
@@ -8,13 +8,13 @@ public class NetworkStarter : MonoBehaviour
         // Press H to start as Host (Server + Client)
         if (Input.GetKeyDown(KeyCode.H))
         {
-            NetworkManager.Singleton.StartHost();
+            NetworkManager.singleton.StartHost();
             Debug.Log("Starting as HOST");
         }
         // Press C to start as Client
         if (Input.GetKeyDown(KeyCode.C))
         {
-            NetworkManager.Singleton.StartClient();
+            NetworkManager.singleton.StartClient();
             Debug.Log("Starting as CLIENT");
         }
     }

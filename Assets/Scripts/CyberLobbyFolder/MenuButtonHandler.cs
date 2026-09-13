@@ -6,7 +6,7 @@ public class MenuButtonHandler : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private TMP_Text statusText;
-    [SerializeField] private ChatManagerCyber chatManager;
+
 
     private void Start()
     {
@@ -14,11 +14,6 @@ public class MenuButtonHandler : MonoBehaviour
         if (statusText == null)
             statusText = FindObjectOfType<TMP_Text>();
 
-        if (chatManager == null)
-            chatManager = FindObjectOfType<ChatManagerCyber>();
-
-        if (chatManager == null)
-            Debug.LogWarning("ChatManagerCyber not found! Buttons won't send messages.");
     }
 
     public void OnCustomizeClick()
@@ -53,13 +48,6 @@ public class MenuButtonHandler : MonoBehaviour
 
     private void AddSystemMessage(string message)
     {
-        if (chatManager != null)
-        {
-            chatManager.AddSystemMessage(message);
-        }
-        else
-        {
-            Debug.Log(message);
-        }
+
     }
 }

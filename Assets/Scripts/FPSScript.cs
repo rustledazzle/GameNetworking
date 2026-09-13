@@ -1,4 +1,4 @@
-using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 
 public class FPSPlayerController : NetworkBehaviour
@@ -22,45 +22,43 @@ public class FPSPlayerController : NetworkBehaviour
     private Camera cam;
     private GameObject crosshairInstance;
 
-    public override void OnNetworkSpawn()
+    public override void OnStartLocalPlayer()
     {
-        base.OnNetworkSpawn();
+        base.OnStartLocalPlayer();
+        SetupCamera();
 
-        if (IsOwner)
+        if (crosshairPrefab != null)
         {
-            // Setup camera
-            SetupCamera();
+            crosshairInstance = Instantiate(crosshairPrefab);
+            crosshairInstance.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            DontDestroyOnLoad(crosshairInstance);
+        }
 
-            // Setup crosshair
-            if (crosshairPrefab != null)
-            {
-                crosshairInstance = Instantiate(crosshairPrefab);
-                crosshairInstance.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
-                DontDestroyOnLoad(crosshairInstance);
-            }
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
 
-            // Lock cursor
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        if (!isLocalPlayer)
+        {
+            Camera[] cams = GetComponentsInChildren<Camera>();
+            foreach (Camera c in cams) c.enabled = false;
         }
     }
 
     private void SetupCamera()
     {
-        // If no camera assigned, find or create one
         if (playerCamera == null)
         {
-            // Try to find existing camera
             cam = GetComponentInChildren<Camera>();
             if (cam == null)
             {
-                // Create new camera
                 GameObject cameraObj = new GameObject("PlayerCamera");
                 cameraObj.transform.SetParent(transform);
                 cam = cameraObj.AddComponent<Camera>();
                 cam.tag = "MainCamera";
-
-                // Position camera above player (FPS view)
                 cameraObj.transform.localPosition = new Vector3(0, 2f, 0);
                 cameraObj.transform.localRotation = Quaternion.identity;
             }
@@ -68,33 +66,22 @@ public class FPSPlayerController : NetworkBehaviour
             {
                 cam = GetComponentInChildren<Camera>();
             }
-
             playerCamera = cam.transform;
         }
         else
         {
             cam = playerCamera.GetComponent<Camera>();
-            if (cam != null)
-            {
-                cam.tag = "MainCamera";
-            }
+            if (cam != null) cam.tag = "MainCamera";
         }
 
-        // Disable other cameras
         Camera[] allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
         foreach (Camera c in allCameras)
-        {
-            if (c != cam)
-            {
-                c.enabled = false;
-            }
-        }
+            if (c != cam) c.enabled = false;
     }
 
     void Update()
     {
-        if (!IsOwner) return;
-
+        if (!isLocalPlayer) return;
         HandleMouseLook();
         HandleShooting();
         HandleCursorLock();
@@ -102,21 +89,16 @@ public class FPSPlayerController : NetworkBehaviour
 
     private void HandleMouseLook()
     {
-        // Get mouse input
         float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
         float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
 
-        // Rotate player horizontally (Y axis)
         transform.Rotate(Vector3.up * mouseX);
 
-        // Rotate camera vertically (X axis) - limited to prevent flipping
         xRotation -= mouseY;
         xRotation = Mathf.Clamp(xRotation, -90f, 90f);
 
         if (playerCamera != null)
-        {
             playerCamera.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-        }
     }
 
     private void HandleShooting()
@@ -124,42 +106,31 @@ public class FPSPlayerController : NetworkBehaviour
         if (Input.GetMouseButtonDown(0) && Time.time >= nextFireTime)
         {
             nextFireTime = Time.time + fireRate;
-            ShootServerRpc();
+            CmdShoot();
         }
     }
 
-    [ServerRpc]
-    private void ShootServerRpc()
+    [Command]
+    private void CmdShoot()
     {
-        if (shootPoint == null) return;
+        if (shootPoint == null || projectilePrefab == null) return;
 
-        // Spawn projectile on server
-        GameObject projectile = Instantiate(
-            projectilePrefab,
-            shootPoint.position,
-            shootPoint.rotation
-        );
-
-        NetworkObject netObj = projectile.GetComponent<NetworkObject>();
-        netObj.Spawn();
+        GameObject projectile = Instantiate(projectilePrefab, shootPoint.position, shootPoint.rotation);
+        NetworkServer.Spawn(projectile);
 
         Rigidbody rb = projectile.GetComponent<Rigidbody>();
         if (rb != null)
-        {
             rb.velocity = shootPoint.forward * projectileSpeed;
-        }
     }
 
     private void HandleCursorLock()
     {
-        // Press Escape to unlock cursor
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
 
-        // Click to lock cursor again
         if (Input.GetMouseButtonDown(0) && Cursor.lockState == CursorLockMode.None)
         {
             Cursor.lockState = CursorLockMode.Locked;
@@ -167,17 +138,10 @@ public class FPSPlayerController : NetworkBehaviour
         }
     }
 
-    public override void OnNetworkDespawn()
+    public override void OnStopClient()
     {
-        base.OnNetworkDespawn();
-
-        // Clean up crosshair
-        if (crosshairInstance != null)
-        {
-            Destroy(crosshairInstance);
-        }
-
-        // Restore cursor
+        base.OnStopClient();
+        if (crosshairInstance != null) Destroy(crosshairInstance);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }

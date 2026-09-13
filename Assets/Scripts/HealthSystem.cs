@@ -1,39 +1,57 @@
-﻿using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 
 public class HealthSystem : NetworkBehaviour
 {
-    public NetworkVariable<float> health = new NetworkVariable<float>(100f);
-    public NetworkVariable<float> maxHealth = new NetworkVariable<float>(100f);
+    [SyncVar(hook = nameof(OnHealthChanged))]
+    public float health = 100f;
+
+    [SyncVar] public float maxHealth = 100f;
 
     [Header("Respawn Settings")]
-    [SerializeField] private float respawnY = 0.3f;  // ← Adjust this in Inspector!
+    [SerializeField] private Transform[] spawnPoints;          // ✅ assign in Inspector
+    [SerializeField] private float respawnY = 0.3f;
     [SerializeField] private float respawnRange = 8f;
     [SerializeField] private float respawnHeightOffset = 0.5f;
 
-    public override void OnNetworkSpawn()
-    {
-        base.OnNetworkSpawn();
+    private CharacterController characterController;
 
-        if (IsServer)
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        characterController = GetComponent<CharacterController>();
+        health = maxHealth;
+    }
+
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        if (isLocalPlayer)
         {
-            health.Value = maxHealth.Value;
-            Debug.Log($"HealthSystem initialized with {health.Value} HP");
+            PlayerHUD hud = FindObjectOfType<PlayerHUD>();
+            if (hud != null)
+                hud.UpdateHealthFromNetwork(health, maxHealth);
         }
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void TakeDamageServerRpc(float damage)
+    private void OnHealthChanged(float oldValue, float newValue)
     {
-        if (!IsServer) return;
+        if (!isLocalPlayer) return;
 
-        health.Value = Mathf.Max(0, health.Value - damage);
-        Debug.Log($"Health: {health.Value}/{maxHealth.Value}");
+        PlayerHUD hud = FindObjectOfType<PlayerHUD>();
+        if (hud != null)
+            hud.UpdateHealthFromNetwork(newValue, maxHealth);
+    }
 
-        if (health.Value <= 0)
-        {
+    public void TakeDamage(float damage)
+    {
+        if (!isServer) return;
+
+        health = Mathf.Max(0, health - damage);
+        Debug.Log($"Health: {health}/{maxHealth}");
+
+        if (health <= 0)
             Die();
-        }
     }
 
     private void Die()
@@ -42,51 +60,81 @@ public class HealthSystem : NetworkBehaviour
 
         if (GetComponent<PlayerController>() != null)
         {
+            // Hide / disable player while dead (optional)
+            SetPlayerActive(false);
+
             Invoke(nameof(RespawnPlayer), 3f);
         }
         else
         {
-            NetworkObject netObj = GetComponent<NetworkObject>();
-            if (netObj != null && netObj.IsSpawned)
-            {
-                netObj.Despawn();
-            }
-            else
-            {
-                Destroy(gameObject);
-            }
+            NetworkServer.Destroy(gameObject);
         }
     }
 
     private void RespawnPlayer()
     {
-        if (IsServer)
+        if (!isServer) return;
+
+        Vector3 spawnPos = GetRespawnPosition();
+        Teleport(spawnPos);
+
+        health = maxHealth;
+        SetPlayerActive(true);
+
+        Debug.Log($"Player respawned at {spawnPos}");
+    }
+
+    private Vector3 GetRespawnPosition()
+    {
+        // ✅ Look up spawn points by the "Respawn" tag
+        GameObject[] spawns = GameObject.FindGameObjectsWithTag("Respawn");
+
+        if (spawns.Length > 0)
         {
-            Vector3 spawnPos = GetGroundPosition();
-            transform.position = spawnPos;
-            health.Value = maxHealth.Value;
-            Debug.Log($"Player respawned at {transform.position}");
+            int idx = Random.Range(0, spawns.Length);
+            return spawns[idx].transform.position;
+        }
+
+        // Fallback: random position near center
+        float x = Random.Range(-respawnRange, respawnRange);
+        float z = Random.Range(-respawnRange, respawnRange);
+        Vector3 origin = new Vector3(x, 10f, z);
+
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 20f))
+            return new Vector3(x, hit.point.y + respawnHeightOffset, z);
+
+        return new Vector3(x, respawnY, z);
+    }
+    // ✅ Teleport properly (CharacterController safe)
+    private void Teleport(Vector3 position)
+    {
+        bool hadController = characterController != null;
+
+        // Disable controller so it doesn't overwrite our position
+        if (hadController)
+            characterController.enabled = false;
+
+        transform.position = position;
+
+        // Re-enable the controller
+        if (hadController)
+            characterController.enabled = true;
+
+        // ✅ Optionally reset velocity if you have a Rigidbody
+        Rigidbody rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
         }
     }
 
-    private Vector3 GetGroundPosition()
+    private void SetPlayerActive(bool active)
     {
-        // Random X and Z position
-        float x = Random.Range(-respawnRange, respawnRange);
-        float z = Random.Range(-respawnRange, respawnRange);
+        // Optional: disable/enable player visuals / input
+        PlayerController pc = GetComponent<PlayerController>();
+        if (pc != null) pc.enabled = active;
 
-        Vector3 spawnPos = new Vector3(x, 10f, z);
-
-        // Raycast to find ground
-        RaycastHit hit;
-        if (Physics.Raycast(spawnPos, Vector3.down, out hit, 20f))
-        {
-            // Place player on ground with offset
-            float y = hit.point.y + respawnHeightOffset;
-            return new Vector3(x, y, z);
-        }
-
-        // Fallback: use Inspector value
-        return new Vector3(x, respawnY, z);
+        // CharacterController affects physics; keep it on even while dead (adjust if needed)
     }
 }

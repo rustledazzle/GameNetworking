@@ -1,4 +1,4 @@
-﻿using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 
 public class GameSceneManager : MonoBehaviour
@@ -23,9 +23,9 @@ public class GameSceneManager : MonoBehaviour
         if (mode == "host")
         {
             Debug.Log("🟢 Starting as HOST...");
-            if (NetworkManager.Singleton != null)
+            if (NetworkManager.singleton != null)
             {
-                NetworkManager.Singleton.StartHost();
+                NetworkManager.singleton.StartHost();
                 Debug.Log("✅ Host started!");
             }
             else
@@ -36,9 +36,9 @@ public class GameSceneManager : MonoBehaviour
         else if (mode == "client")
         {
             Debug.Log("🔵 Starting as CLIENT...");
-            if (NetworkManager.Singleton != null)
+            if (NetworkManager.singleton != null)
             {
-                NetworkManager.Singleton.StartClient();
+                NetworkManager.singleton.StartClient();
                 Debug.Log("✅ Client started!");
             }
             else

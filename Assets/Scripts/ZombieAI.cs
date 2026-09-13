@@ -1,4 +1,4 @@
-﻿using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 
 public class ZombieAI : NetworkBehaviour
@@ -6,106 +6,148 @@ public class ZombieAI : NetworkBehaviour
     [Header("Movement")]
     [SerializeField] private float speed = 2f;
     [SerializeField] private float attackRange = 1.5f;
+    [SerializeField] private float gravity = -9.81f;
+    [SerializeField] private float rotationSpeed = 8f;
 
     [Header("Combat")]
     [SerializeField] private float damage = 10f;
     [SerializeField] private float attackCooldown = 1f;
 
-    [Header("Health")]
-    [SerializeField] private float maxHealth = 50f;
+    [Header("Spawn Animation")]
+    [SerializeField] private Animator animator;           // optional
+    [SerializeField] private string spawnTriggerName = "Spawn";
 
     private Transform target;
     private float lastAttackTime = 0f;
     private HealthSystem healthSystem;
+    private CharacterController controller;
+    private float verticalVelocity = 0f;
 
-    public override void OnNetworkSpawn()
+    // ✅ New: spawn delay
+    private float spawnDelayRemaining = 0f;
+    private bool hasSpawned = false;
+
+    public override void OnStartServer()
     {
-        base.OnNetworkSpawn();
+        base.OnStartServer();
 
-        // 🔧 FIX 1: Ensure NetworkObject exists
-        if (GetComponent<NetworkObject>() == null)
-        {
-            Debug.LogError($"ZombieAI: Missing NetworkObject component on {gameObject.name}!");
-            enabled = false;
-            return;
-        }
-
-        // Get or add HealthSystem
         healthSystem = GetComponent<HealthSystem>();
         if (healthSystem == null)
-        {
             healthSystem = gameObject.AddComponent<HealthSystem>();
-            Debug.Log($"Added HealthSystem to {gameObject.name}");
-        }
 
-        // Only enable movement on server
-        if (!IsServer)
-        {
-            enabled = false;
-            return;
-        }
+        controller = GetComponent<CharacterController>();
+        animator = animator != null ? animator : GetComponentInChildren<Animator>();
+    }
 
-        // Initial target search
-        target = FindNearestPlayer();
+    // ✅ Called by ZombieSpawnTrigger to delay chasing
+    public void SetSpawnDelay(float seconds)
+    {
+        spawnDelayRemaining = seconds;
+        hasSpawned = true;
+
+        // Play spawn animation
+        if (animator != null && !string.IsNullOrEmpty(spawnTriggerName))
+            animator.SetTrigger(spawnTriggerName);
+
+        Debug.Log($"[ZombieAI] Spawn delay set to {seconds}s");
     }
 
     private void Update()
     {
-        if (!IsServer) return;
+        if (!isServer) return;
 
-        // Check if zombie is dead
-        if (healthSystem != null && healthSystem.health.Value <= 0)
+        if (healthSystem != null && healthSystem.health <= 0)
+            return;
+
+        // ✅ Handle spawn delay
+        if (spawnDelayRemaining > 0f)
         {
-            return; // Dead, don't move or attack
+            spawnDelayRemaining -= Time.deltaTime;
+
+            // Apply gravity during spawn animation (so it falls to the ground)
+            if (controller != null)
+            {
+                if (controller.isGrounded && verticalVelocity < 0)
+                    verticalVelocity = -2f;
+
+                verticalVelocity += gravity * Time.deltaTime;
+                controller.Move(new Vector3(0, verticalVelocity, 0) * Time.deltaTime);
+            }
+            return;
         }
 
-        // 🔧 FIX 2: Check if target is still valid
+        // Normal AI from here on
         if (target == null || !IsTargetValid(target))
         {
             target = FindNearestPlayer();
             if (target == null) return;
         }
 
+        // Gravity
+        if (controller != null)
+        {
+            if (controller.isGrounded && verticalVelocity < 0)
+                verticalVelocity = -2f;
+
+            verticalVelocity += gravity * Time.deltaTime;
+        }
+
         float dist = Vector3.Distance(transform.position, target.position);
 
-        // 🔧 FIX 3: Attack logic - works when DISTANCE IS LESS THAN OR EQUAL TO attackRange
         if (dist <= attackRange)
         {
-            // Attack player
             if (Time.time >= lastAttackTime + attackCooldown)
             {
                 lastAttackTime = Time.time;
                 HealthSystem playerHealth = target.GetComponent<HealthSystem>();
-                if (playerHealth != null && playerHealth.health.Value > 0)
+                if (playerHealth != null && playerHealth.health > 0)
                 {
-                    playerHealth.TakeDamageServerRpc(damage);
+                    playerHealth.TakeDamage(damage);
                     Debug.Log($"Zombie attacked {target.name} for {damage} damage!");
                 }
-                else
-                {
-                    // Target is dead, clear it
-                    target = null;
-                }
+                else target = null;
             }
+
+            // Face target
+            Vector3 lookDir = target.position - transform.position;
+            lookDir.y = 0f;
+            if (lookDir.sqrMagnitude > 0.001f)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(lookDir);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
+            }
+
+            if (controller != null)
+                controller.Move(new Vector3(0, verticalVelocity, 0) * Time.deltaTime);
         }
         else
         {
-            // Move towards player (only if not attacking)
-            Vector3 dir = (target.position - transform.position).normalized;
-            transform.position += dir * speed * Time.deltaTime;
-            transform.LookAt(target);
+            // Chase player
+            Vector3 dir = target.position - transform.position;
+            dir.y = 0f;
+            dir.Normalize();
+
+            Vector3 move = dir * speed;
+            move.y = verticalVelocity;
+
+            if (controller != null)
+                controller.Move(move * Time.deltaTime);
+            else
+                transform.position += move * Time.deltaTime;
+
+            if (dir.sqrMagnitude > 0.001f)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(dir);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
+            }
         }
     }
 
-    // 🔧 NEW METHOD: Check if target is still alive and has HealthSystem
     private bool IsTargetValid(Transform potentialTarget)
     {
         if (potentialTarget == null) return false;
-
         HealthSystem hs = potentialTarget.GetComponent<HealthSystem>();
-        if (hs == null) return false;
-
-        return hs.health.Value > 0;
+        return hs != null && hs.health > 0;
     }
 
     private Transform FindNearestPlayer()
@@ -116,9 +158,8 @@ public class ZombieAI : NetworkBehaviour
 
         foreach (GameObject p in players)
         {
-            // Check if player is alive
             HealthSystem hs = p.GetComponent<HealthSystem>();
-            if (hs == null || hs.health.Value <= 0) continue;
+            if (hs == null || hs.health <= 0) continue;
 
             float d = Vector3.Distance(transform.position, p.transform.position);
             if (d < minDist)
@@ -128,23 +169,5 @@ public class ZombieAI : NetworkBehaviour
             }
         }
         return nearest;
-    }
-
-    [ServerRpc(RequireOwnership = false)]
-    public void TakeDamageServerRpc(float damageAmount)
-    {
-        if (!IsServer) return;
-
-        if (healthSystem != null)
-        {
-            healthSystem.TakeDamageServerRpc(damageAmount);
-            Debug.Log($"Zombie took {damageAmount} damage. Health: {healthSystem.health.Value}");
-        }
-    }
-
-    public override void OnDestroy()
-    {
-        base.OnDestroy();
-        Debug.Log($"{gameObject.name} destroyed!");
     }
 }

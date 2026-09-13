@@ -13,9 +13,14 @@ public class PlayerHUD : MonoBehaviour
     [SerializeField] private Image weaponIcon;
 
     [Header("Ammo Settings")]
-    [SerializeField] private int maxAmmo = 48;
+    [Tooltip("Magazine size (max bullets in one reload).")]
+    [SerializeField] private int maxAmmo = 12;         // ← magazine size
+
+    [Tooltip("Bullets currently in the magazine.")]
     [SerializeField] private int currentAmmo = 12;
-    [SerializeField] private int reserveAmmo = 60;
+
+    [Tooltip("Extra bullets in reserve.")]
+    [SerializeField] private int reserveAmmo = 48;     // ← reserve
 
     [Header("Weapon Icons")]
     [SerializeField] private Sprite pistolIcon;
@@ -26,7 +31,6 @@ public class PlayerHUD : MonoBehaviour
 
     private void Start()
     {
-        // Auto-find references if not assigned
         if (healthBar == null)
             healthBar = transform.Find("HealthPanel/HealthBar")?.GetComponent<Image>();
 
@@ -39,82 +43,58 @@ public class PlayerHUD : MonoBehaviour
         if (weaponIcon == null)
             weaponIcon = transform.Find("AmmoPanel/WeaponIcon")?.GetComponent<Image>();
 
+        // Clamp starting values
+        currentAmmo = Mathf.Clamp(currentAmmo, 0, maxAmmo);
+
         UpdateHealthUI();
         UpdateAmmoUI();
     }
 
-    // ✅ NEW: Update health from Network (called by PlayerController)
+    public void UpdateHealthFromNetwork(float newHealth, float newMaxHealth)
+    {
+        currentHealth = newHealth;
+        maxHealth = newMaxHealth;
+        UpdateHealthUI();
+    }
+
     public void UpdateHealthFromNetwork(float newHealth)
     {
         currentHealth = newHealth;
         UpdateHealthUI();
-        Debug.Log($"HUD health updated to: {currentHealth}");
     }
 
     public void UpdateHealthUI()
     {
         if (healthBar != null)
-        {
-            healthBar.fillAmount = currentHealth / maxHealth;
-        }
+            healthBar.fillAmount = maxHealth > 0 ? currentHealth / maxHealth : 0f;
 
         if (healthText != null)
-        {
             healthText.text = $"{Mathf.Ceil(currentHealth)} HP";
-        }
     }
 
     public void UpdateAmmoUI()
     {
         if (ammoText != null)
-        {
-            ammoText.text = $"{currentAmmo} / {maxAmmo}";
-        }
-    }
-
-    public void TakeDamage(float damage)
-    {
-        currentHealth = Mathf.Max(0, currentHealth - damage);
-        UpdateHealthUI();
-
-        if (currentHealth <= 0)
-        {
-            Debug.Log("Player died!");
-            RespawnPlayer();
-        }
-    }
-
-    public void Heal(float amount)
-    {
-        currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
-        UpdateHealthUI();
+            ammoText.text = $"{currentAmmo} / {reserveAmmo}";   // ✅ shows reserve
     }
 
     public void UseAmmo(int amount)
     {
         currentAmmo = Mathf.Max(0, currentAmmo - amount);
         UpdateAmmoUI();
-
-        if (currentAmmo <= 0 && reserveAmmo > 0)
-        {
-            Debug.Log("Out of ammo! Press R to reload.");
-        }
-        else if (currentAmmo <= 0)
-        {
-            Debug.Log("Out of ammo! No reserve ammo left.");
-        }
     }
 
     public void Reload()
     {
         if (reserveAmmo <= 0)
         {
-            Debug.Log("No reserve ammo!");
+            Debug.Log("[HUD] No reserve ammo to reload.");
             return;
         }
+
         if (currentAmmo >= maxAmmo)
         {
-            Debug.Log("Magazine is full!");
+            Debug.Log("[HUD] Magazine is already full.");
             return;
         }
 
@@ -123,43 +103,14 @@ public class PlayerHUD : MonoBehaviour
 
         reserveAmmo -= ammoToReload;
         currentAmmo += ammoToReload;
-
         UpdateAmmoUI();
-        Debug.Log($"Reloaded! Current: {currentAmmo}, Reserve: {reserveAmmo}");
+        Debug.Log($"[HUD] Reloaded → {currentAmmo}/{reserveAmmo}");
     }
 
-    public void SetWeaponPistol()
-    {
-        if (weaponIcon != null && pistolIcon != null)
-        {
-            weaponIcon.sprite = pistolIcon;
-        }
-        maxAmmo = 48;
-        UpdateAmmoUI();
-    }
-
-    public void SetWeaponRifle()
-    {
-        if (weaponIcon != null && rifleIcon != null)
-        {
-            weaponIcon.sprite = rifleIcon;
-        }
-        maxAmmo = 30;
-        UpdateAmmoUI();
-    }
-
-    private void RespawnPlayer()
-    {
-        currentHealth = maxHealth;
-        currentAmmo = 12;
-        reserveAmmo = 60;
-        UpdateHealthUI();
-        UpdateAmmoUI();
-
-        Debug.Log("Player respawned in HUD!");
-    }
-
-    public int GetCurrentAmmo() => currentAmmo;
-    public int GetMaxAmmo() => maxAmmo;
     public bool CanShoot() => currentAmmo > 0;
+
+    // Optional accessors
+    public int GetCurrentAmmo() => currentAmmo;
+    public int GetReserveAmmo() => reserveAmmo;
+    public int GetMagazineSize() => maxAmmo;
 }

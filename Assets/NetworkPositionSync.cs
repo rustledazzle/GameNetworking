@@ -1,29 +1,43 @@
-using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 using System.Collections;
 
 public class NetworkPositionSync : NetworkBehaviour
 {
     [Header("Sync Settings")]
-    [SerializeField] private float syncRate = 0.05f; // 20 times per second
+    [SerializeField] private float syncRate = 0.05f;
     [SerializeField] private float positionThreshold = 0.01f;
+    [SerializeField] private float interpolationDuration = 0.1f;
+
+    // ✅ SyncVar with hook
+    [SyncVar(hook = nameof(OnSyncedPositionChanged))]
+    private Vector3 syncedPosition;
 
     private float timer = 0f;
     private Vector3 lastSentPosition;
-    private Vector3 lastReceivedPosition;
 
-    public override void OnNetworkSpawn()
+    public override void OnStartServer()
     {
-        base.OnNetworkSpawn();
-        if (IsOwner)
-        {
-            lastSentPosition = transform.position;
-        }
+        base.OnStartServer();
+        syncedPosition = transform.position;
+    }
+
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        lastSentPosition = transform.position;
+    }
+
+    public override void OnStartLocalPlayer()
+    {
+        base.OnStartLocalPlayer();
+        lastSentPosition = transform.position;
     }
 
     void Update()
     {
-        if (!IsOwner) return;
+        // Only the local player sends position updates
+        if (!isLocalPlayer) return;
 
         timer += Time.deltaTime;
         if (timer >= syncRate)
@@ -33,39 +47,46 @@ public class NetworkPositionSync : NetworkBehaviour
             float distance = Vector3.Distance(transform.position, lastSentPosition);
             if (distance > positionThreshold)
             {
-                UpdatePositionServerRpc(transform.position);
+                CmdUpdatePosition(transform.position);
                 lastSentPosition = transform.position;
             }
         }
     }
 
-    [ServerRpc]
-    private void UpdatePositionServerRpc(Vector3 newPos)
+    // Mirror Command: Client → Server
+    [Command]
+    private void CmdUpdatePosition(Vector3 newPos)
     {
+        // Anti-cheat: reject large jumps
+        if (Vector3.Distance(transform.position, newPos) > 10f)
+        {
+            Debug.LogWarning($"Rejected suspicious position update from {netId}");
+            return;
+        }
+
         transform.position = newPos;
-        UpdatePositionClientRpc(newPos);
+        syncedPosition = newPos;
     }
 
-    [ClientRpc]
-    private void UpdatePositionClientRpc(Vector3 newPos)
+    // SyncVar hook: called on clients when syncedPosition changes
+    private void OnSyncedPositionChanged(Vector3 oldValue, Vector3 newValue)
     {
-        if (IsOwner) return;
+        // Skip if this is the local player (we already moved ourselves)
+        if (isLocalPlayer) return;
 
-        // Smooth interpolation for other clients
         StopAllCoroutines();
-        StartCoroutine(SmoothMove(newPos));
+        StartCoroutine(SmoothMove(newValue));
     }
 
     private IEnumerator SmoothMove(Vector3 targetPos)
     {
-        float duration = 0.1f;
         float elapsed = 0f;
         Vector3 startPos = transform.position;
 
-        while (elapsed < duration)
+        while (elapsed < interpolationDuration)
         {
             elapsed += Time.deltaTime;
-            float t = elapsed / duration;
+            float t = elapsed / interpolationDuration;
             transform.position = Vector3.Lerp(startPos, targetPos, t);
             yield return null;
         }

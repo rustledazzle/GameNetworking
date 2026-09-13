@@ -1,4 +1,4 @@
-﻿using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 
 public class QuickStart : MonoBehaviour
@@ -16,9 +16,9 @@ public class QuickStart : MonoBehaviour
         // Press H to start as Host
         if (Input.GetKeyDown(KeyCode.H))
         {
-            if (NetworkManager.Singleton != null)
+            if (NetworkManager.singleton != null)
             {
-                NetworkManager.Singleton.StartHost();
+                NetworkManager.singleton.StartHost();
                 Debug.Log("✅ Started as HOST!");
             }
             else
@@ -30,9 +30,9 @@ public class QuickStart : MonoBehaviour
         // Press C to start as Client
         if (Input.GetKeyDown(KeyCode.C))
         {
-            if (NetworkManager.Singleton != null)
+            if (NetworkManager.singleton != null)
             {
-                NetworkManager.Singleton.StartClient();
+                NetworkManager.singleton.StartClient();
                 Debug.Log("✅ Started as CLIENT!");
             }
             else

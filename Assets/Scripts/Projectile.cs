@@ -1,4 +1,4 @@
-﻿using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 
 public class Projectile : NetworkBehaviour
@@ -6,123 +6,73 @@ public class Projectile : NetworkBehaviour
     [Header("Combat")]
     [SerializeField] private float damage = 25f;
     [SerializeField] private float lifeTime = 3f;
+    [SerializeField] private float speed = 30f;
 
-    [Header("Effects")]
-    [SerializeField] private GameObject hitEffectPrefab;
+    [SyncVar] private Vector3 velocity;
 
     private Rigidbody rb;
-    private Vector3 startVelocity;
-    private bool hasStarted = false;
-    private bool isServerBullet = false;
+    private bool hasLaunched;
 
-    public override void OnNetworkSpawn()
+    public override void OnStartServer()
     {
-        base.OnNetworkSpawn();
+        base.OnStartServer();
 
         rb = GetComponent<Rigidbody>();
-        startVelocity = transform.forward * 30f;
 
-        // Check if this is a server-authoritative bullet
-        // If we're on the server AND we're the one who spawned it (or it's a server bullet)
-        isServerBullet = IsServer;
+        // Server decides velocity, then stores it in the SyncVar
+        velocity = transform.forward * speed;
 
-        if (IsServer)
+        if (rb != null)
         {
-            // SERVER BULLET (Host or Server)
-            // Destroy after lifetime
-            Destroy(gameObject, lifeTime);
-
-            if (rb != null)
-            {
-                rb.velocity = startVelocity;
-                rb.angularVelocity = Vector3.zero;
-                rb.useGravity = false;
-                rb.isKinematic = false;
-                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            }
-
-            hasStarted = true;
-            Debug.Log($"Server bullet spawned at {transform.position}");
+            rb.velocity = velocity;
+            rb.angularVelocity = Vector3.zero;
         }
-        else
-        {
-            // CLIENT BULLET (Predicted)
-            if (rb != null)
-            {
-                rb.isKinematic = true;
-                rb.useGravity = false;
-            }
 
-            hasStarted = true;
-            Debug.Log($"Client predicted bullet spawned at {transform.position}");
+        Destroy(gameObject, lifeTime);
+    }
+
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+
+        // Client: enable kinematic so server authority doesn't fight it
+        rb = GetComponent<Rigidbody>();
+        if (!isServer && rb != null)
+        {
+            rb.isKinematic = true;
         }
     }
 
-    void Update()
+    private void Update()
     {
-        // CLIENT VISUAL MOVEMENT (only for client-predicted bullets)
-        if (!IsServer && hasStarted && !isServerBullet)
+        // ✅ Client-side visual movement — no physics, no jitter
+        if (!isServer && hasLaunched)
         {
-            transform.position += startVelocity * Time.deltaTime;
+            transform.position += velocity * Time.deltaTime;
         }
-    }
 
-    void FixedUpdate()
-    {
-        // SERVER PHYSICS MOVEMENT (only for server bullets)
-        if (IsServer && rb != null && !rb.isKinematic)
+        // Start moving once we've received the velocity from the server
+        if (!isServer && !hasLaunched && velocity.sqrMagnitude > 0.001f)
         {
-            // Keep the bullet moving on the server
-            if (rb.velocity.magnitude < 25f)
-            {
-                rb.velocity = transform.forward * 30f;
-            }
+            hasLaunched = true;
         }
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        // ONLY SERVER processes hits
-        if (!IsServer) return;
+        if (!isServer) return;
 
-        Debug.Log($"Server bullet hit: {other.gameObject.name}");
-
-        // Check for HealthSystem (zombies, players, etc.)
-        HealthSystem health = other.GetComponent<HealthSystem>();
+        HealthSystem health = other.GetComponentInParent<HealthSystem>();
         if (health != null)
         {
-            // Apply damage
-            health.TakeDamageServerRpc(damage);
-            Debug.Log($"Dealt {damage} damage to {other.gameObject.name}");
-            DestroyProjectile();
+            health.TakeDamage(damage);
+            NetworkServer.Destroy(gameObject);
             return;
         }
 
-        // Destroy on any other collision (walls, ground, etc.)
-        DestroyProjectile();
-    }
-
-    private void DestroyProjectile()
-    {
-        if (!IsServer) return;
-
-        // Spawn hit effect
-        if (hitEffectPrefab != null)
+        if (!other.isTrigger)
         {
-            GameObject effect = Instantiate(hitEffectPrefab, transform.position, Quaternion.identity);
-            NetworkObject effectNetObj = effect.GetComponent<NetworkObject>();
-            if (effectNetObj != null) effectNetObj.Spawn();
-        }
-
-        // Despawn projectile
-        NetworkObject projectileNetObj = GetComponent<NetworkObject>();
-        if (projectileNetObj != null && projectileNetObj.IsSpawned)
-        {
-            projectileNetObj.Despawn();
-        }
-        else
-        {
-            Destroy(gameObject);
+            NetworkServer.Destroy(gameObject);
         }
     }
 }

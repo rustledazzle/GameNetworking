@@ -1,4 +1,4 @@
-﻿using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 
 public class ZombieSpawner_Debug : NetworkBehaviour
@@ -13,29 +13,31 @@ public class ZombieSpawner_Debug : NetworkBehaviour
     private bool hasSpawnedInitial = false;
     private int spawnAttempts = 0;
 
-    public override void OnNetworkSpawn()
+    public override void OnStartServer()
     {
-        base.OnNetworkSpawn();
+        base.OnStartServer();
 
         // EASY TO FIND LOGS
         Debug.Log("========================================");
         Debug.Log("🔥 ZOMBIE SPAWNER DEBUG");
         Debug.Log("========================================");
-        Debug.Log($"  • IsServer: {IsServer}");
-        Debug.Log($"  • IsClient: {IsClient}");
-        Debug.Log($"  • IsHost: {IsHost}");
+        Debug.Log($"  • isServer: {isServer}");
+        Debug.Log($"  • isClient: {isClient}");
         Debug.Log($"  • Prefab assigned: {(zombiePrefab != null ? "✅ YES" : "❌ NO")}");
         Debug.Log($"  • Max Zombies: {maxZombies}");
         Debug.Log($"  • GameObject active: {gameObject.activeInHierarchy}");
         Debug.Log($"  • Scene: {gameObject.scene.name}");
         Debug.Log("========================================");
 
-        if (IsServer)
-        {
-            Debug.Log("🟢 SERVER MODE - Zombies will spawn!");
-            Invoke(nameof(ForceInitialSpawn), 1f);
-        }
-        else
+        Debug.Log("🟢 SERVER MODE - Zombies will spawn!");
+        Invoke(nameof(ForceInitialSpawn), 1f);
+    }
+
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+
+        if (!isServer)
         {
             enabled = false;
             Debug.Log("🔵 CLIENT MODE - Spawner disabled (zombies spawn from server)");
@@ -44,7 +46,7 @@ public class ZombieSpawner_Debug : NetworkBehaviour
 
     private void ForceInitialSpawn()
     {
-        if (!IsServer) return;
+        if (!isServer) return;
 
         Debug.Log("🚀 FORCE INITIAL SPAWN STARTING...");
 
@@ -62,7 +64,7 @@ public class ZombieSpawner_Debug : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsServer) return;
+        if (!isServer) return;
 
         timer += Time.deltaTime;
 
@@ -97,7 +99,7 @@ public class ZombieSpawner_Debug : NetworkBehaviour
         spawnAttempts++;
         Debug.Log($"📍 Spawn attempt #{spawnAttempts}");
 
-        if (!IsServer)
+        if (!isServer)
         {
             Debug.LogWarning("❌ Not server - cannot spawn!");
             return false;
@@ -113,21 +115,22 @@ public class ZombieSpawner_Debug : NetworkBehaviour
         Debug.Log($"📍 Spawning zombie at: {spawnPos}");
 
         GameObject zombie = Instantiate(zombiePrefab, spawnPos, Quaternion.identity);
-        NetworkObject netObj = zombie.GetComponent<NetworkObject>();
 
-        if (netObj != null)
+        // ✅ Mirror: Check for NetworkIdentity
+        NetworkIdentity netIdentity = zombie.GetComponent<NetworkIdentity>();
+        if (netIdentity == null)
         {
-            netObj.Spawn();
-            int total = CountAliveZombies();
-            Debug.Log($"✅ Zombie spawned! Total alive: {total}/{maxZombies}");
-            return true;
-        }
-        else
-        {
-            Debug.LogError("❌ Zombie prefab missing NetworkObject!");
+            Debug.LogError("❌ Zombie prefab missing NetworkIdentity! Add it to the prefab.");
             Destroy(zombie);
             return false;
         }
+
+        // ✅ Mirror: Spawn on server
+        NetworkServer.Spawn(zombie);
+
+        int total = CountAliveZombies();
+        Debug.Log($"✅ Zombie spawned! Total alive: {total}/{maxZombies}");
+        return true;
     }
 
     private int CountAliveZombies()
@@ -137,10 +140,10 @@ public class ZombieSpawner_Debug : NetworkBehaviour
 
         foreach (var zombie in zombies)
         {
-            if (zombie.IsSpawned && zombie.gameObject.activeInHierarchy)
+            if (zombie.isActiveAndEnabled)
             {
                 HealthSystem hs = zombie.GetComponent<HealthSystem>();
-                if (hs != null && hs.health.Value > 0)
+                if (hs != null && hs.health > 0)
                 {
                     count++;
                 }
@@ -177,9 +180,9 @@ public class ZombieSpawner_Debug : NetworkBehaviour
         );
     }
 
-    public override void OnDestroy()
+    public override void OnStopServer()
     {
-        base.OnDestroy();
+        base.OnStopServer();
         Debug.Log($"💀 ZombieSpawner destroyed after {spawnAttempts} spawn attempts");
     }
 }

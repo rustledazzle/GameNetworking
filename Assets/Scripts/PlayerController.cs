@@ -1,4 +1,4 @@
-﻿using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 
 public class PlayerController : NetworkBehaviour
@@ -10,6 +10,7 @@ public class PlayerController : NetworkBehaviour
     [Header("Movement")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float sprintMultiplier = 1.5f;
+    [SerializeField] private float gravity = -9.81f;
 
     [Header("Camera")]
     [SerializeField] private Transform playerCamera;
@@ -25,8 +26,9 @@ public class PlayerController : NetworkBehaviour
     [Header("HUD")]
     [SerializeField] private PlayerHUD playerHUD;
 
-    [Header("Chat")]
-    [SerializeField] private ChatManager chatManager;
+    // ✅ SyncVar for remote rotation
+    [SyncVar(hook = nameof(OnRotationChanged))]
+    private float syncedYRotation;
 
     private float xRotation = 0f;
     private float nextFireTime = 0f;
@@ -35,6 +37,8 @@ public class PlayerController : NetworkBehaviour
     private bool isInitialized = false;
     private Transform cachedTransform;
     private HealthSystem healthSystem;
+    private CharacterController characterController;
+    private float verticalVelocity = 0f;
 
     private Vector3 moveDirection;
     private float currentSpeed;
@@ -42,74 +46,50 @@ public class PlayerController : NetworkBehaviour
     private void Awake()
     {
         cachedTransform = transform;
+        characterController = GetComponent<CharacterController>();
     }
 
-    public override void OnNetworkSpawn()
+    public override void OnStartServer()
     {
-        base.OnNetworkSpawn();
+        base.OnStartServer();
+        // ✅ Seed the SyncVar with the initial rotation
+        syncedYRotation = transform.eulerAngles.y;
+    }
 
-        if (IsOwner)
+    public override void OnStartLocalPlayer()
+    {
+        base.OnStartLocalPlayer();
+
+        SetupCamera();
+        LockCursor(true);
+        isInitialized = true;
+
+        if (playerHUD == null)
+            playerHUD = FindObjectOfType<PlayerHUD>();
+
+        healthSystem = GetComponent<HealthSystem>();
+        if (healthSystem != null && playerHUD != null)
+            playerHUD.UpdateHealthFromNetwork(healthSystem.health);
+
+        Debug.Log($"Player {netId} initialized as LOCAL PLAYER");
+    }
+
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+
+        if (!isLocalPlayer)
         {
-            SetupCamera();
-            LockCursor(true);
-            isInitialized = true;
-            enabled = true;
-
-            // Find ChatManager
-            if (chatManager == null)
-            {
-                chatManager = FindObjectOfType<ChatManager>();
-            }
-
-            // Find HUD
-            if (playerHUD == null)
-            {
-                playerHUD = FindObjectOfType<PlayerHUD>();
-            }
-
-            // ✅ Get HealthSystem and subscribe to changes
-            healthSystem = GetComponent<HealthSystem>();
-            if (healthSystem != null)
-            {
-                healthSystem.health.OnValueChanged += OnHealthChanged;
-
-                // Initial HUD update
-                if (playerHUD != null)
-                {
-                    playerHUD.UpdateHealthFromNetwork(healthSystem.health.Value);
-                }
-            }
-
-            Debug.Log($"Player {OwnerClientId} initialized as OWNER");
-        }
-        else
-        {
-            enabled = false;
-
-            Camera[] cams = GetComponentsInChildren<Camera>();
+            Camera[] cams = GetComponentsInChildren<Camera>(true);
             foreach (Camera c in cams)
             {
                 c.enabled = false;
+                AudioListener al = c.GetComponent<AudioListener>();
+                if (al != null) al.enabled = false;
             }
 
-            // Disable HUD for non-owner
             if (playerHUD != null)
-            {
                 playerHUD.gameObject.SetActive(false);
-            }
-
-            Debug.Log($"Player {OwnerClientId} is NOT owner - disabled");
-        }
-    }
-
-    // ✅ Called when health changes
-    private void OnHealthChanged(float oldValue, float newValue)
-    {
-        Debug.Log($"Health changed: {oldValue} → {newValue}");
-
-        if (playerHUD != null)
-        {
-            playerHUD.UpdateHealthFromNetwork(newValue);
         }
     }
 
@@ -126,10 +106,8 @@ public class PlayerController : NetworkBehaviour
                 cameraObj.transform.localRotation = Quaternion.identity;
                 cam = cameraObj.AddComponent<Camera>();
 
-                if (IsOwner)
-                {
+                if (isLocalPlayer)
                     cameraObj.AddComponent<AudioListener>();
-                }
 
                 playerCamera = cameraObj.transform;
             }
@@ -138,46 +116,45 @@ public class PlayerController : NetworkBehaviour
                 playerCamera = cam.transform;
                 cam.transform.localPosition = cameraOffset;
                 cam.transform.localRotation = Quaternion.identity;
+
+                AudioListener existing = cam.GetComponent<AudioListener>();
+                if (existing == null && isLocalPlayer)
+                    cam.gameObject.AddComponent<AudioListener>();
+                else if (existing != null && !isLocalPlayer)
+                    existing.enabled = false;
             }
         }
 
-        if (IsOwner)
-        {
-            cam.tag = "MainCamera";
-            cam.enabled = true;
+        cam.tag = "MainCamera";
+        cam.enabled = true;
 
-            Camera[] allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
-            foreach (Camera c in allCameras)
+        Camera[] allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+        foreach (Camera c in allCameras)
+        {
+            if (c != cam)
             {
-                if (c != cam)
-                {
-                    c.enabled = false;
-                    AudioListener listener = c.GetComponent<AudioListener>();
-                    if (listener != null) Destroy(listener);
-                }
+                c.enabled = false;
+                AudioListener listener = c.GetComponent<AudioListener>();
+                if (listener != null) listener.enabled = false;
             }
-        }
-        else
-        {
-            cam.enabled = false;
         }
     }
 
     void Update()
     {
-        if (!IsOwner || !isInitialized) return;
+        if (!isLocalPlayer || !isInitialized) return;
 
-        if (chatManager != null && chatManager.IsChatActive)
-        {
-            HandleCursorLock();
+        if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen)
             return;
-        }
 
         HandleMovement();
         HandleMouseLook();
         HandleShooting();
         HandleReload();
         HandleCursorLock();
+
+        // ✅ Send our Y rotation to the server so other clients see it
+        CmdUpdateRotation(cachedTransform.eulerAngles.y);
     }
 
     private void HandleMovement()
@@ -198,19 +175,31 @@ public class PlayerController : NetworkBehaviour
         bool isSprinting = Input.GetKey(KeyCode.LeftShift);
         currentSpeed = isSprinting ? moveSpeed * sprintMultiplier : moveSpeed;
 
-        if (moveDirection.magnitude > 0.1f)
+        if (characterController != null)
         {
-            cachedTransform.position += moveDirection * currentSpeed * Time.deltaTime;
+            if (characterController.isGrounded && verticalVelocity < 0)
+                verticalVelocity = -2f;
 
-            if (IsOwner)
+            verticalVelocity += gravity * Time.deltaTime;
+
+            Vector3 move = moveDirection * currentSpeed;
+            move.y = verticalVelocity;
+
+            characterController.Move(move * Time.deltaTime);
+            CmdUpdatePosition(cachedTransform.position);
+        }
+        else
+        {
+            if (moveDirection.magnitude > 0.1f)
             {
-                UpdatePositionServerRpc(cachedTransform.position);
+                cachedTransform.position += moveDirection * currentSpeed * Time.deltaTime;
+                CmdUpdatePosition(cachedTransform.position);
             }
         }
     }
 
-    [ServerRpc]
-    private void UpdatePositionServerRpc(Vector3 newPosition)
+    [Command]
+    private void CmdUpdatePosition(Vector3 newPosition)
     {
         cachedTransform.position = newPosition;
     }
@@ -226,16 +215,13 @@ public class PlayerController : NetworkBehaviour
         xRotation = Mathf.Clamp(xRotation, -maxLookAngle, maxLookAngle);
 
         if (playerCamera != null)
-        {
             playerCamera.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-        }
     }
 
     private void HandleShooting()
     {
         if (Input.GetMouseButtonDown(0) && Time.time >= nextFireTime)
         {
-            // Check ammo
             if (playerHUD != null && !playerHUD.CanShoot())
             {
                 Debug.Log("No ammo! Press R to reload.");
@@ -244,27 +230,13 @@ public class PlayerController : NetworkBehaviour
 
             nextFireTime = Time.time + fireRate;
 
-            if (IsOwner)
-            {
-                // Use ammo
-                if (playerHUD != null)
-                {
-                    playerHUD.UseAmmo(ammoPerShot);
-                }
+            if (playerHUD != null)
+                playerHUD.UseAmmo(ammoPerShot);
 
-                Vector3 shootDir = playerCamera.forward;
-                Vector3 spawnPos = playerCamera.position + shootDir * bulletSpawnOffset;
+            Vector3 shootDir = playerCamera.forward;
+            Vector3 spawnPos = playerCamera.position + shootDir * bulletSpawnOffset;
 
-                if (IsServer)
-                {
-                    ShootServerDirect(spawnPos, shootDir);
-                }
-                else
-                {
-                    ClientPredictShoot(spawnPos, shootDir);
-                    ShootServerRpc(spawnPos, shootDir);
-                }
-            }
+            CmdShoot(spawnPos, shootDir);
         }
     }
 
@@ -273,84 +245,34 @@ public class PlayerController : NetworkBehaviour
         if (Input.GetKeyDown(KeyCode.R))
         {
             if (playerHUD != null)
-            {
                 playerHUD.Reload();
-            }
         }
     }
 
-    private void ShootServerDirect(Vector3 spawnPos, Vector3 direction)
+    [Command]
+    private void CmdShoot(Vector3 spawnPos, Vector3 direction)
     {
         if (projectilePrefab == null) return;
 
         Quaternion rotation = Quaternion.LookRotation(direction);
         GameObject projectile = Instantiate(projectilePrefab, spawnPos, rotation);
-        NetworkObject netObj = projectile.GetComponent<NetworkObject>();
-
-        if (netObj != null)
-        {
-            netObj.Spawn();
-
-            Rigidbody rb = projectile.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.velocity = direction * projectileSpeed;
-                rb.angularVelocity = Vector3.zero;
-            }
-        }
-    }
-
-    private void ClientPredictShoot(Vector3 spawnPos, Vector3 direction)
-    {
-        if (projectilePrefab == null) return;
-
-        Quaternion rotation = Quaternion.LookRotation(direction);
-        GameObject projectile = Instantiate(projectilePrefab, spawnPos, rotation);
+        NetworkServer.Spawn(projectile);
 
         Rigidbody rb = projectile.GetComponent<Rigidbody>();
         if (rb != null)
         {
             rb.velocity = direction * projectileSpeed;
-        }
-
-        Destroy(projectile, 3f);
-    }
-
-    [ServerRpc]
-    private void ShootServerRpc(Vector3 spawnPos, Vector3 direction)
-    {
-        if (projectilePrefab == null) return;
-
-        Quaternion rotation = Quaternion.LookRotation(direction);
-        GameObject projectile = Instantiate(projectilePrefab, spawnPos, rotation);
-        NetworkObject netObj = projectile.GetComponent<NetworkObject>();
-
-        if (netObj != null)
-        {
-            netObj.Spawn();
-
-            Rigidbody rb = projectile.GetComponent<Rigidbody>();
-            if (rb != null)
-            {
-                rb.velocity = direction * projectileSpeed;
-                rb.angularVelocity = Vector3.zero;
-            }
+            rb.angularVelocity = Vector3.zero;
         }
     }
 
     private void HandleCursorLock()
     {
-        if (chatManager != null && chatManager.IsChatActive) return;
-
         if (Input.GetKeyDown(KeyCode.Escape))
-        {
             LockCursor(false);
-        }
 
         if (Input.GetMouseButtonDown(0) && !isCursorLocked)
-        {
             LockCursor(true);
-        }
     }
 
     private void LockCursor(bool locked)
@@ -369,41 +291,26 @@ public class PlayerController : NetworkBehaviour
         }
     }
 
-    // ✅ Public method to take damage from zombies (now updates HealthSystem)
     public void TakeDamage(float damage)
     {
-        if (!IsOwner) return;
+        if (!isLocalPlayer) return;
 
-        // Let HealthSystem handle the damage
         if (healthSystem != null)
-        {
-            healthSystem.TakeDamageServerRpc(damage);
-        }
-        else
-        {
-            // Fallback: Update HUD directly
-            if (playerHUD != null)
-            {
-                playerHUD.TakeDamage(damage);
-            }
-        }
+            CmdTakeDamage(damage);
     }
 
-    public override void OnNetworkDespawn()
+    [Command]
+    private void CmdTakeDamage(float damage)
     {
-        base.OnNetworkDespawn();
-        LockCursor(false);
-
-        // Unsubscribe from health changes
         if (healthSystem != null)
-        {
-            healthSystem.health.OnValueChanged -= OnHealthChanged;
-        }
+            healthSystem.TakeDamage(damage);
     }
 
     private void OnApplicationFocus(bool hasFocus)
     {
-        if (!IsOwner) return;
+        if (!isLocalPlayer) return;
+
+        if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen) return;
 
         if (hasFocus && isCursorLocked)
         {
@@ -415,5 +322,20 @@ public class PlayerController : NetworkBehaviour
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
+    }
+
+    // ✅ Send our rotation to the server
+    [Command]
+    private void CmdUpdateRotation(float y)
+    {
+        syncedYRotation = y;
+    }
+
+    // ✅ Apply rotation when it arrives from the server (only on remote clients)
+    private void OnRotationChanged(float oldValue, float newValue)
+    {
+        if (isLocalPlayer) return;
+
+        cachedTransform.rotation = Quaternion.Euler(0f, newValue, 0f);
     }
 }

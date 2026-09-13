@@ -1,4 +1,4 @@
-﻿using Unity.Netcode;
+﻿using Mirror;
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
@@ -9,23 +9,21 @@ public class SpawnManager : NetworkBehaviour
     [SerializeField] private GameObject playerPrefab;
     [SerializeField] private float spawnDistance = 3f;
 
-    private HashSet<ulong> spawnedPlayers = new HashSet<ulong>();
+    private HashSet<int> spawnedPlayers = new HashSet<int>();
     private bool isInitialSpawnComplete = false;
 
-    public override void OnNetworkSpawn()
+    public override void OnStartServer()
     {
-        base.OnNetworkSpawn();
+        base.OnStartServer();
 
-        Debug.Log($"[SpawnManager] OnNetworkSpawn called. IsServer: {IsServer}");
+        Debug.Log($"[SpawnManager] OnStartServer called");
 
-        if (IsServer)
-        {
-            // Subscribe to client connection events
-            NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
+        // ✅ Subscribe to Mirror's connection events
+        NetworkServer.OnConnectedEvent += OnServerConnected;
+        NetworkServer.OnDisconnectedEvent += OnServerDisconnected;
 
-            // Start initial spawn after delay
-            StartCoroutine(SpawnInitialPlayers());
-        }
+        // Start initial spawn after delay
+        StartCoroutine(SpawnInitialPlayers());
     }
 
     private IEnumerator SpawnInitialPlayers()
@@ -33,69 +31,79 @@ public class SpawnManager : NetworkBehaviour
         // Wait for NetworkManager to fully initialize
         yield return new WaitForSeconds(0.5f);
 
-        if (!IsServer) yield break;
+        if (!isServer) yield break;
 
-        Debug.Log($"[SpawnManager] Spawning initial players. Connected clients: {NetworkManager.Singleton.ConnectedClients.Count}");
+        Debug.Log($"[SpawnManager] Spawning initial players. Connected clients: {NetworkServer.connections.Count}");
 
-        // Spawn all currently connected clients
-        foreach (ulong clientId in NetworkManager.Singleton.ConnectedClientsIds)
+        // ✅ Spawn all currently connected clients
+        foreach (NetworkConnectionToClient conn in NetworkServer.connections.Values)
         {
-            if (!spawnedPlayers.Contains(clientId))
+            if (!spawnedPlayers.Contains(conn.connectionId))
             {
-                Vector3 spawnPos = GetSpawnPosition(clientId);
-                SpawnPlayer(clientId, spawnPos);
-                spawnedPlayers.Add(clientId);
+                Vector3 spawnPos = GetSpawnPosition(conn.connectionId);
+                SpawnPlayer(conn, spawnPos);
+                spawnedPlayers.Add(conn.connectionId);
             }
         }
 
         isInitialSpawnComplete = true;
     }
 
-    private void OnClientConnected(ulong clientId)
+    // ✅ Mirror: Called when a client connects (server-only)
+    private void OnServerConnected(NetworkConnectionToClient conn)
     {
-        if (!IsServer) return;
+        if (!isServer) return;
 
-        Debug.Log($"[SpawnManager] Client {clientId} connected!");
+        Debug.Log($"[SpawnManager] Client {conn.connectionId} connected!");
 
-        // If initial spawn is complete, spawn this client immediately
         if (isInitialSpawnComplete)
         {
-            // Wait a moment for client to fully connect
-            StartCoroutine(SpawnClientDelayed(clientId));
+            StartCoroutine(SpawnClientDelayed(conn));
         }
     }
 
-    private IEnumerator SpawnClientDelayed(ulong clientId)
+    private IEnumerator SpawnClientDelayed(NetworkConnectionToClient conn)
     {
         // Wait for client to fully connect
         yield return new WaitForSeconds(0.2f);
 
-        if (!IsServer) yield break;
+        if (!isServer) yield break;
+        if (conn == null) yield break;
 
         // Check if already spawned
-        if (spawnedPlayers.Contains(clientId))
+        if (spawnedPlayers.Contains(conn.connectionId))
         {
-            Debug.Log($"[SpawnManager] Client {clientId} already spawned");
+            Debug.Log($"[SpawnManager] Client {conn.connectionId} already spawned");
             yield break;
         }
 
-        Vector3 spawnPos = GetSpawnPosition(clientId);
-        SpawnPlayer(clientId, spawnPos);
-        spawnedPlayers.Add(clientId);
+        Vector3 spawnPos = GetSpawnPosition(conn.connectionId);
+        SpawnPlayer(conn, spawnPos);
+        spawnedPlayers.Add(conn.connectionId);
 
-        Debug.Log($"[SpawnManager] ✅ Client {clientId} spawned!");
+        Debug.Log($"[SpawnManager] ✅ Client {conn.connectionId} spawned!");
     }
 
-    private Vector3 GetSpawnPosition(ulong clientId)
+    private void OnServerDisconnected(NetworkConnectionToClient conn)
     {
-        // Host (0) spawns on left, others on right
-        if (clientId == 0)
+        if (!isServer) return;
+
+        if (spawnedPlayers.Contains(conn.connectionId))
+            spawnedPlayers.Remove(conn.connectionId);
+
+        Debug.Log($"[SpawnManager] Client {conn.connectionId} disconnected.");
+    }
+
+    private Vector3 GetSpawnPosition(int connectionId)
+    {
+        // First connection (Host, id 0) spawns on left, others on right
+        if (connectionId == 0)
             return new Vector3(-spawnDistance, 2, 0);
         else
             return new Vector3(spawnDistance, 2, 0);
     }
 
-    private void SpawnPlayer(ulong clientId, Vector3 position)
+    private void SpawnPlayer(NetworkConnectionToClient conn, Vector3 position)
     {
         if (playerPrefab == null)
         {
@@ -103,28 +111,28 @@ public class SpawnManager : NetworkBehaviour
             return;
         }
 
-        Debug.Log($"[SpawnManager] Spawning player {clientId} at {position}");
+        Debug.Log($"[SpawnManager] Spawning player {conn.connectionId} at {position}");
 
         GameObject player = Instantiate(playerPrefab, position, Quaternion.identity);
-        NetworkObject netObj = player.GetComponent<NetworkObject>();
 
-        if (netObj != null)
+        // ✅ Mirror: Check for NetworkIdentity
+        NetworkIdentity netIdentity = player.GetComponent<NetworkIdentity>();
+        if (netIdentity == null)
         {
-            netObj.SpawnAsPlayerObject(clientId);
-            Debug.Log($"✅ Player {clientId} spawned!");
-        }
-        else
-        {
-            Debug.LogError("❌ Player prefab missing NetworkObject!");
+            Debug.LogError("❌ Player prefab missing NetworkIdentity!");
             Destroy(player);
+            return;
         }
+
+        // ✅ Mirror: Spawn as player object, assign to the specific connection
+        NetworkServer.AddPlayerForConnection(conn, player);
+        Debug.Log($"✅ Player {conn.connectionId} spawned!");
     }
 
     private void OnDisable()
     {
-        if (NetworkManager.Singleton != null)
-        {
-            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
-        }
+        // ✅ Unsubscribe from events
+        NetworkServer.OnConnectedEvent -= OnServerConnected;
+        NetworkServer.OnDisconnectedEvent -= OnServerDisconnected;
     }
 }
