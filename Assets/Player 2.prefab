@@ -139,7 +139,7 @@ GameObject:
   - component: {fileID: 3528014088596587918}
   m_Layer: 0
   m_Name: Player 2
-  m_TagString: Untagged
+  m_TagString: Player
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -205,6 +205,8 @@ MonoBehaviour:
   fireRate: 0.15
   projectileSpeed: 30
   bulletSpawnOffset: 3
+  ammoPerShot: 1
+  playerHUD: {fileID: 0}
   chatManager: {fileID: 0}
 --- !u!114 &-388558442391460929
 MonoBehaviour:
@@ -222,6 +224,9 @@ MonoBehaviour:
     m_InternalValue: 100
   maxHealth:
     m_InternalValue: 100
+  respawnY: 0
+  respawnRange: 8
+  respawnHeightOffset: 0.5
 --- !u!114 &-5078738869468775032
 MonoBehaviour:
   m_ObjectHideFlags: 0

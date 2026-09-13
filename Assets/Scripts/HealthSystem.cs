@@ -1,10 +1,15 @@
-using Unity.Netcode;
+﻿using Unity.Netcode;
 using UnityEngine;
 
 public class HealthSystem : NetworkBehaviour
 {
     public NetworkVariable<float> health = new NetworkVariable<float>(100f);
     public NetworkVariable<float> maxHealth = new NetworkVariable<float>(100f);
+
+    [Header("Respawn Settings")]
+    [SerializeField] private float respawnY = 0.3f;  // ← Adjust this in Inspector!
+    [SerializeField] private float respawnRange = 8f;
+    [SerializeField] private float respawnHeightOffset = 0.5f;
 
     public override void OnNetworkSpawn()
     {
@@ -35,15 +40,12 @@ public class HealthSystem : NetworkBehaviour
     {
         Debug.Log($"Object died: {gameObject.name}");
 
-        // Check if this is a player
         if (GetComponent<PlayerController>() != null)
         {
-            // Respawn player after delay
             Invoke(nameof(RespawnPlayer), 3f);
         }
         else
         {
-            // Zombie or other object - destroy it
             NetworkObject netObj = GetComponent<NetworkObject>();
             if (netObj != null && netObj.IsSpawned)
             {
@@ -60,13 +62,31 @@ public class HealthSystem : NetworkBehaviour
     {
         if (IsServer)
         {
-            transform.position = new Vector3(
-                Random.Range(-8f, 8f),
-                0,
-                Random.Range(-8f, 8f)
-            );
+            Vector3 spawnPos = GetGroundPosition();
+            transform.position = spawnPos;
             health.Value = maxHealth.Value;
             Debug.Log($"Player respawned at {transform.position}");
         }
+    }
+
+    private Vector3 GetGroundPosition()
+    {
+        // Random X and Z position
+        float x = Random.Range(-respawnRange, respawnRange);
+        float z = Random.Range(-respawnRange, respawnRange);
+
+        Vector3 spawnPos = new Vector3(x, 10f, z);
+
+        // Raycast to find ground
+        RaycastHit hit;
+        if (Physics.Raycast(spawnPos, Vector3.down, out hit, 20f))
+        {
+            // Place player on ground with offset
+            float y = hit.point.y + respawnHeightOffset;
+            return new Vector3(x, y, z);
+        }
+
+        // Fallback: use Inspector value
+        return new Vector3(x, respawnY, z);
     }
 }

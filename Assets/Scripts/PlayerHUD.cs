@@ -43,19 +43,12 @@ public class PlayerHUD : MonoBehaviour
         UpdateAmmoUI();
     }
 
-    private void Update()
+    // ✅ NEW: Update health from Network (called by PlayerController)
+    public void UpdateHealthFromNetwork(float newHealth)
     {
-        // DEBUG: Test health with H key
-        if (Input.GetKeyDown(KeyCode.H))
-        {
-            TakeDamage(10);
-        }
-
-        // DEBUG: Test ammo with R key (reload)
-        if (Input.GetKeyDown(KeyCode.R))
-        {
-            Reload();
-        }
+        currentHealth = newHealth;
+        UpdateHealthUI();
+        Debug.Log($"HUD health updated to: {currentHealth}");
     }
 
     public void UpdateHealthUI()
@@ -163,11 +156,9 @@ public class PlayerHUD : MonoBehaviour
         UpdateHealthUI();
         UpdateAmmoUI();
 
-        // Position reset is handled by HealthSystem or SpawnManager
-        Debug.Log("Player respawned!");
+        Debug.Log("Player respawned in HUD!");
     }
 
-    // Public getters
     public int GetCurrentAmmo() => currentAmmo;
     public int GetMaxAmmo() => maxAmmo;
     public bool CanShoot() => currentAmmo > 0;

@@ -34,6 +34,7 @@ public class PlayerController : NetworkBehaviour
     private bool isCursorLocked = true;
     private bool isInitialized = false;
     private Transform cachedTransform;
+    private HealthSystem healthSystem;
 
     private Vector3 moveDirection;
     private float currentSpeed;
@@ -66,6 +67,19 @@ public class PlayerController : NetworkBehaviour
                 playerHUD = FindObjectOfType<PlayerHUD>();
             }
 
+            // ✅ Get HealthSystem and subscribe to changes
+            healthSystem = GetComponent<HealthSystem>();
+            if (healthSystem != null)
+            {
+                healthSystem.health.OnValueChanged += OnHealthChanged;
+
+                // Initial HUD update
+                if (playerHUD != null)
+                {
+                    playerHUD.UpdateHealthFromNetwork(healthSystem.health.Value);
+                }
+            }
+
             Debug.Log($"Player {OwnerClientId} initialized as OWNER");
         }
         else
@@ -85,6 +99,17 @@ public class PlayerController : NetworkBehaviour
             }
 
             Debug.Log($"Player {OwnerClientId} is NOT owner - disabled");
+        }
+    }
+
+    // ✅ Called when health changes
+    private void OnHealthChanged(float oldValue, float newValue)
+    {
+        Debug.Log($"Health changed: {oldValue} → {newValue}");
+
+        if (playerHUD != null)
+        {
+            playerHUD.UpdateHealthFromNetwork(newValue);
         }
     }
 
@@ -344,14 +369,23 @@ public class PlayerController : NetworkBehaviour
         }
     }
 
-    // Public method to take damage from zombies
+    // ✅ Public method to take damage from zombies (now updates HealthSystem)
     public void TakeDamage(float damage)
     {
         if (!IsOwner) return;
 
-        if (playerHUD != null)
+        // Let HealthSystem handle the damage
+        if (healthSystem != null)
         {
-            playerHUD.TakeDamage(damage);
+            healthSystem.TakeDamageServerRpc(damage);
+        }
+        else
+        {
+            // Fallback: Update HUD directly
+            if (playerHUD != null)
+            {
+                playerHUD.TakeDamage(damage);
+            }
         }
     }
 
@@ -359,6 +393,12 @@ public class PlayerController : NetworkBehaviour
     {
         base.OnNetworkDespawn();
         LockCursor(false);
+
+        // Unsubscribe from health changes
+        if (healthSystem != null)
+        {
+            healthSystem.health.OnValueChanged -= OnHealthChanged;
+        }
     }
 
     private void OnApplicationFocus(bool hasFocus)
