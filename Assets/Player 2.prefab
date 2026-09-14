@@ -208,6 +208,7 @@ MonoBehaviour:
   syncInterval: 0
   health: 100
   maxHealth: 100
+  spawnPoints: []
   respawnY: 0
   respawnRange: 8
   respawnHeightOffset: 0.5
@@ -248,10 +249,10 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.6
+  m_Radius: 0.65
   m_Height: 3
   m_Direction: 1
-  m_Center: {x: 0, y: 0.2, z: 0}
+  m_Center: {x: 0, y: 0.65, z: 0}
 --- !u!114 &5977179290792543273
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -289,12 +290,12 @@ CharacterController:
   m_Enabled: 1
   serializedVersion: 3
   m_Height: 3
-  m_Radius: 0.6
+  m_Radius: 0.5
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0.65, z: 0}
 --- !u!1001 &2417962978809453904
 PrefabInstance:
   m_ObjectHideFlags: 0
