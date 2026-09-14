@@ -14,7 +14,7 @@ public class CustomNetworkManager : NetworkManager
     public override void OnServerConnect(NetworkConnectionToClient conn)
     {
         base.OnServerConnect(conn);
-        Debug.Log($"Client {conn.connectionId} connected");
+        Debug.Log($"[NetworkManager] Client {conn.connectionId} connected");
 
         if (SimpleChat.Instance != null)
             SimpleChat.Instance.HandleServerConnect(conn);
@@ -26,7 +26,7 @@ public class CustomNetworkManager : NetworkManager
             SimpleChat.Instance.HandleServerDisconnect(conn);
 
         base.OnServerDisconnect(conn);
-        Debug.Log($"Client {conn.connectionId} disconnected");
+        Debug.Log($"[NetworkManager] Client {conn.connectionId} disconnected");
     }
 
     public override void OnServerAddPlayer(NetworkConnectionToClient conn)
@@ -62,5 +62,23 @@ public class CustomNetworkManager : NetworkManager
             NetworkServer.AddPlayerForConnection(conn, gamePlayer);
             Debug.Log($"[CustomNetworkManager] Spawned GamePlayer for {conn.connectionId} at {gamePlayerSpawnPosition}");
         }
+    }
+
+    // ✅ NEW: Client-side disconnect handler — returns to Offline Scene
+    public override void OnClientDisconnect()
+    {
+        base.OnClientDisconnect();
+
+        Debug.Log("[NetworkManager] Disconnected from host — returning to Offline Scene");
+
+        // Store a reason so OfflineMenuUI can show a message
+        PlayerPrefs.SetString("DisconnectReason", "Host disconnected");
+        PlayerPrefs.Save();
+
+        // Load the offline scene. This is the same scene name you set in the
+        // NetworkManager's "Offline Scene" field, but we load it explicitly here
+        // so it always runs, even if the automatic path fails.
+        string target = string.IsNullOrEmpty(offlineScene) ? "0_OfflineScene" : offlineScene;
+        SceneManager.LoadScene(target);
     }
 }

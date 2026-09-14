@@ -1,47 +1,77 @@
 ﻿using Mirror;
 using UnityEngine;
 
-public class ZombieSpawnTrigger : NetworkBehaviour
+public class ZombieSpawnTrigger : MonoBehaviour
 {
     [Header("Spawn Settings")]
+    [Tooltip("The zombie prefab to spawn.")]
     [SerializeField] private GameObject zombiePrefab;
-    [SerializeField] private float spawnLifetime = 4f;   // seconds zombie stays "spawning"
-    [SerializeField] private bool triggerOnce = true;    // only spawn once
+
+    [Tooltip("How many zombies to spawn when the player enters.")]
+    [SerializeField] private int zombiesToSpawn = 2;
+
+    [Tooltip("Seconds each zombie waits before chasing.")]
+    [SerializeField] private float spawnLifetime = 4f;
+
+    [Tooltip("Radius around the trigger where zombies spawn (spread them out).")]
+    [SerializeField] private float spawnRadius = 2f;
+
+    [Tooltip("Only fire once, or allow repeat triggers.")]
+    [SerializeField] private bool triggerOnce = true;
+
+    [Tooltip("Delay between repeated waves (only used if triggerOnce is false).")]
+    [SerializeField] private float repeatCooldown = 15f;
+
+    [Tooltip("Label for reading Console logs more easily.")]
+    [SerializeField] private string groupLabel = "Wave 1";
 
     private bool hasSpawned = false;
+    private float lastTriggerTime = -Mathf.Infinity;
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!isServer) return;
-        if (hasSpawned && triggerOnce) return;
+        // ✅ Server-only spawn logic
+        if (!NetworkServer.active) return;
 
-        // Only trigger for players
+        // ✅ Ignore bullets and other non-player triggers
+        if (other.GetComponent<Projectile>() != null) return;
+
+        // ✅ Only react to players
         if (!other.CompareTag("Player")) return;
 
-        Debug.Log($"[ZombieSpawnTrigger] Player entered area at {transform.position}");
-        SpawnZombie();
+        // ✅ Respect "once" or "cooldown" logic
+        if (triggerOnce && hasSpawned) return;
+        if (!triggerOnce && Time.time < lastTriggerTime + repeatCooldown) return;
+
+        Debug.Log($"[Trigger:{groupLabel}] Player entered — spawning {zombiesToSpawn} zombie(s)");
+        SpawnZombies();
     }
 
-    private void SpawnZombie()
+    private void SpawnZombies()
     {
         if (zombiePrefab == null)
         {
-            Debug.LogError("[ZombieSpawnTrigger] Zombie prefab missing!");
+            Debug.LogError($"[Trigger:{groupLabel}] Zombie prefab missing!");
             return;
         }
 
         hasSpawned = true;
+        lastTriggerTime = Time.time;
 
-        // Spawn slightly above ground so gravity pulls it down
-        Vector3 spawnPos = transform.position + Vector3.up * 0.5f;
+        for (int i = 0; i < zombiesToSpawn; i++)
+        {
+            // Spread zombies within the trigger radius
+            Vector2 offset = Random.insideUnitCircle * spawnRadius;
+            Vector3 spawnPos = transform.position + new Vector3(offset.x, 0.5f, offset.y);
 
-        GameObject zombie = Instantiate(zombiePrefab, spawnPos, Quaternion.identity);
+            GameObject zombie = Instantiate(zombiePrefab, spawnPos, Quaternion.identity);
 
-        // ✅ Tell the zombie to stay still for X seconds before chasing
-        ZombieAI ai = zombie.GetComponent<ZombieAI>();
-        if (ai != null)
-            ai.SetSpawnDelay(spawnLifetime);
+            // Delay chase behavior
+            ZombieAI ai = zombie.GetComponent<ZombieAI>();
+            if (ai != null)
+                ai.SetSpawnDelay(spawnLifetime);
 
-        NetworkServer.Spawn(zombie);
+            NetworkServer.Spawn(zombie);
+        }
     }
 }

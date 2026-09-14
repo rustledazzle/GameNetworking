@@ -34,6 +34,9 @@ public class SimpleChat : NetworkBehaviour
 
     private void Update()
     {
+        // ✅ Don't allow chat while the pause menu is open
+        if (PauseMenu.IsPauseMenuOpen) return;
+
         // ✅ T only OPENS the chat — never closes it
         if (!isOpen && Input.GetKeyDown(toggleKey))
         {
@@ -67,7 +70,6 @@ public class SimpleChat : NetworkBehaviour
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
-        // Clear the input field on close so it's fresh next time
         if (inputField != null)
             inputField.text = "";
     }
@@ -177,5 +179,14 @@ public class SimpleChat : NetworkBehaviour
         uint id = (uint)conn.connectionId;
         names.Remove(id);
         RpcReceive($"[SYSTEM] User_{id} left.");
+    }
+
+    // ✅ Cleanup so a stale instance doesn't linger across sessions
+    public override void OnStopClient()
+    {
+        base.OnStopClient();
+        history.Clear();
+        names.Clear();
+        if (chatText != null) chatText.text = "";
     }
 }

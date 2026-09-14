@@ -26,7 +26,6 @@ public class PlayerController : NetworkBehaviour
     [Header("HUD")]
     [SerializeField] private PlayerHUD playerHUD;
 
-    // ✅ SyncVar for remote rotation
     [SyncVar(hook = nameof(OnRotationChanged))]
     private float syncedYRotation;
 
@@ -52,7 +51,6 @@ public class PlayerController : NetworkBehaviour
     public override void OnStartServer()
     {
         base.OnStartServer();
-        // ✅ Seed the SyncVar with the initial rotation
         syncedYRotation = transform.eulerAngles.y;
     }
 
@@ -144,7 +142,12 @@ public class PlayerController : NetworkBehaviour
     {
         if (!isLocalPlayer || !isInitialized) return;
 
+        // ✅ Block gameplay input while chat is open
         if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen)
+            return;
+
+        // ✅ Block gameplay input while pause menu is open
+        if (PauseMenu.IsPauseMenuOpen)
             return;
 
         HandleMovement();
@@ -153,7 +156,6 @@ public class PlayerController : NetworkBehaviour
         HandleReload();
         HandleCursorLock();
 
-        // ✅ Send our Y rotation to the server so other clients see it
         CmdUpdateRotation(cachedTransform.eulerAngles.y);
     }
 
@@ -311,6 +313,7 @@ public class PlayerController : NetworkBehaviour
         if (!isLocalPlayer) return;
 
         if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen) return;
+        if (PauseMenu.IsPauseMenuOpen) return;   // ✅ don't fight the pause menu
 
         if (hasFocus && isCursorLocked)
         {
@@ -324,14 +327,12 @@ public class PlayerController : NetworkBehaviour
         }
     }
 
-    // ✅ Send our rotation to the server
     [Command]
     private void CmdUpdateRotation(float y)
     {
         syncedYRotation = y;
     }
 
-    // ✅ Apply rotation when it arrives from the server (only on remote clients)
     private void OnRotationChanged(float oldValue, float newValue)
     {
         if (isLocalPlayer) return;

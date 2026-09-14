@@ -37,7 +37,22 @@ public class OfflineMenuUI : MonoBehaviour
         if (quitButton != null)
             quitButton.onClick.AddListener(QuitGame);
 
-        UpdateStatus("Enter a username, then choose Host or Client.");
+        // ✅ Reset the connect flag whenever this scene loads
+        isConnecting = false;
+        SetButtonsInteractable(true);
+
+        // ✅ Show disconnect reason if the client just came back from a session
+        string reason = PlayerPrefs.GetString("DisconnectReason", "");
+        if (!string.IsNullOrEmpty(reason))
+        {
+            UpdateStatus($"⚠️ {reason}");
+            PlayerPrefs.DeleteKey("DisconnectReason");
+            PlayerPrefs.Save();
+        }
+        else
+        {
+            UpdateStatus("Enter a username, then choose Host or Client.");
+        }
     }
 
     // ----- Host -----
@@ -84,17 +99,7 @@ public class OfflineMenuUI : MonoBehaviour
             return;
         }
 
-        // ✅ Set the NetworkManager's address instead
-        NetworkManager.singleton.networkAddress = serverInput.text;
-
-        // Optional: set the port if your transport exposes it
-        var portTransport = NetworkManager.singleton.GetComponent<kcp2k.KcpTransport>();
-        if (portTransport != null)
-        {
-            // KcpTransport uses the port from the transport's settings, not from networkAddress
-            // You can set it via reflection or by exposing a field, but usually 7777 is fine
-        }
-
+        NetworkManager.singleton.networkAddress = serverInput.text.Trim();
         NetworkManager.singleton.StartClient();
     }
 
