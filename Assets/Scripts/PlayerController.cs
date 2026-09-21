@@ -11,6 +11,8 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float sprintMultiplier = 1.5f;
     [SerializeField] private float gravity = -9.81f;
+    [SerializeField] private float jumpHeight = 1.5f;        // ✅ NEW
+    [SerializeField] private KeyCode jumpKey = KeyCode.Space; // ✅ NEW
 
     [Header("Camera")]
     [SerializeField] private Transform playerCamera;
@@ -142,11 +144,9 @@ public class PlayerController : NetworkBehaviour
     {
         if (!isLocalPlayer || !isInitialized) return;
 
-        // ✅ Block gameplay input while chat is open
         if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen)
             return;
 
-        // ✅ Block gameplay input while pause menu is open
         if (PauseMenu.IsPauseMenuOpen)
             return;
 
@@ -181,6 +181,12 @@ public class PlayerController : NetworkBehaviour
         {
             if (characterController.isGrounded && verticalVelocity < 0)
                 verticalVelocity = -2f;
+
+            // ✅ JUMP — only when grounded
+            if (characterController.isGrounded && Input.GetKeyDown(jumpKey))
+            {
+                verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            }
 
             verticalVelocity += gravity * Time.deltaTime;
 
@@ -313,7 +319,7 @@ public class PlayerController : NetworkBehaviour
         if (!isLocalPlayer) return;
 
         if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen) return;
-        if (PauseMenu.IsPauseMenuOpen) return;   // ✅ don't fight the pause menu
+        if (PauseMenu.IsPauseMenuOpen) return;
 
         if (hasFocus && isCursorLocked)
         {

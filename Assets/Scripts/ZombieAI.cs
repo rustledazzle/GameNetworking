@@ -12,9 +12,11 @@ public class ZombieAI : NetworkBehaviour
     [Header("Combat")]
     [SerializeField] private float damage = 10f;
     [SerializeField] private float attackCooldown = 1f;
+    [Tooltip("Seconds removed from the shared timer each hit.")]
+    [SerializeField] private float timePenalty = 30f;
 
     [Header("Spawn Animation")]
-    [SerializeField] private Animator animator;           // optional
+    [SerializeField] private Animator animator;
     [SerializeField] private string spawnTriggerName = "Spawn";
 
     private Transform target;
@@ -23,7 +25,10 @@ public class ZombieAI : NetworkBehaviour
     private CharacterController controller;
     private float verticalVelocity = 0f;
 
-    // ✅ New: spawn delay
+    // Cached reference to the timer (found lazily to avoid per-hit lookups)
+    private NetworkTimer cachedTimer;
+
+    // Spawn delay
     private float spawnDelayRemaining = 0f;
     private bool hasSpawned = false;
 
@@ -39,13 +44,12 @@ public class ZombieAI : NetworkBehaviour
         animator = animator != null ? animator : GetComponentInChildren<Animator>();
     }
 
-    // ✅ Called by ZombieSpawnTrigger to delay chasing
+    // Called by ZombieSpawnTrigger
     public void SetSpawnDelay(float seconds)
     {
         spawnDelayRemaining = seconds;
         hasSpawned = true;
 
-        // Play spawn animation
         if (animator != null && !string.IsNullOrEmpty(spawnTriggerName))
             animator.SetTrigger(spawnTriggerName);
 
@@ -59,12 +63,11 @@ public class ZombieAI : NetworkBehaviour
         if (healthSystem != null && healthSystem.health <= 0)
             return;
 
-        // ✅ Handle spawn delay
+        // Handle spawn delay
         if (spawnDelayRemaining > 0f)
         {
             spawnDelayRemaining -= Time.deltaTime;
 
-            // Apply gravity during spawn animation (so it falls to the ground)
             if (controller != null)
             {
                 if (controller.isGrounded && verticalVelocity < 0)
@@ -76,7 +79,7 @@ public class ZombieAI : NetworkBehaviour
             return;
         }
 
-        // Normal AI from here on
+        // Find target
         if (target == null || !IsTargetValid(target))
         {
             target = FindNearestPlayer();
@@ -99,11 +102,15 @@ public class ZombieAI : NetworkBehaviour
             if (Time.time >= lastAttackTime + attackCooldown)
             {
                 lastAttackTime = Time.time;
+
                 HealthSystem playerHealth = target.GetComponent<HealthSystem>();
                 if (playerHealth != null && playerHealth.health > 0)
                 {
                     playerHealth.TakeDamage(damage);
                     Debug.Log($"Zombie attacked {target.name} for {damage} damage!");
+
+                    // ✅ NEW: Deduct time from the shared timer
+                    ApplyTimePenalty();
                 }
                 else target = null;
             }
@@ -122,7 +129,7 @@ public class ZombieAI : NetworkBehaviour
         }
         else
         {
-            // Chase player
+            // Chase
             Vector3 dir = target.position - transform.position;
             dir.y = 0f;
             dir.Normalize();
@@ -140,6 +147,26 @@ public class ZombieAI : NetworkBehaviour
                 Quaternion targetRot = Quaternion.LookRotation(dir);
                 transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.deltaTime);
             }
+        }
+    }
+
+    // ✅ NEW: Deducts time from the shared NetworkTimer
+    private void ApplyTimePenalty()
+    {
+        if (!isServer) return;
+
+        // Cache the timer to avoid per-hit FindObjectOfType calls
+        if (cachedTimer == null)
+            cachedTimer = FindObjectOfType<NetworkTimer>();
+
+        if (cachedTimer != null)
+        {
+            cachedTimer.ApplyPenalty();
+            Debug.Log($"[ZombieAI] Applied -{timePenalty}s penalty");
+        }
+        else
+        {
+            Debug.LogWarning("[ZombieAI] No NetworkTimer found in scene!");
         }
     }
 
