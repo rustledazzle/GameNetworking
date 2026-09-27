@@ -127,6 +127,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a169a299b6bb59d478a8eadd1b5c2e42, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1334074988132823476}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: a169a299b6bb59d478a8eadd1b5c2e42, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 677640663507799287}
   m_SourcePrefab: {fileID: 100100000, guid: a169a299b6bb59d478a8eadd1b5c2e42, type: 3}
 --- !u!1 &8150903691692629004 stripped
 GameObject:
@@ -148,12 +151,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
-  speed: 2
+  speed: 5
   attackRange: 3
   gravity: -9.81
   rotationSpeed: 8
   damage: 10
   attackCooldown: 1
+  timePenalty: 30
   animator: {fileID: 0}
   spawnTriggerName: Spawn
 --- !u!114 &-7782112027639871758
@@ -177,6 +181,7 @@ MonoBehaviour:
   respawnY: 0.3
   respawnRange: 8
   respawnHeightOffset: 0.5
+  respawnDelay: 3
 --- !u!95 &2276812512895242280
 Animator:
   serializedVersion: 5
@@ -241,3 +246,42 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: -0.1, y: 1, z: 0.2}
+--- !u!114 &677640663507799287
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8150903691692629004}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8ff3ba0becae47b8b9381191598957c8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 1
+  syncMode: 0
+  syncInterval: 0
+  target: {fileID: 8815236707196733110}
+  syncPosition: 1
+  syncRotation: 1
+  syncScale: 0
+  onlySyncOnChange: 1
+  compressRotation: 1
+  interpolatePosition: 1
+  interpolateRotation: 1
+  interpolateScale: 1
+  coordinateSpace: 0
+  timelineOffset: 1
+  showGizmos: 0
+  showOverlay: 0
+  overlayColor: {r: 0, g: 0, b: 0, a: 0.5}
+  onlySyncOnChangeCorrectionMultiplier: 2
+  useFixedUpdate: 0
+  rotationSensitivity: 0.01
+  positionPrecision: 0.01
+  scalePrecision: 0.01
+--- !u!4 &8815236707196733110 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: a169a299b6bb59d478a8eadd1b5c2e42, type: 3}
+  m_PrefabInstance: {fileID: 9069328709782036829}
+  m_PrefabAsset: {fileID: 0}

@@ -6,23 +6,25 @@ using TMPro;
 public class NetworkTimer : NetworkBehaviour
 {
     [Header("Timer Settings")]
-    [SerializeField] private float startingTime = 300f;      // 5 minutes
-    [SerializeField] private float penaltySeconds = 30f;     // default per hit
+    [SerializeField] private float startingTime = 300f;
+    [SerializeField] private float penaltySeconds = 30f;
 
     [Header("UI")]
     [SerializeField] private TMP_Text timerText;
-    [SerializeField] private TimerPenaltyFlash penaltyFlash;   // ✅ NEW
+    [SerializeField] private TimerPenaltyFlash penaltyFlash;
     [SerializeField] private Color normalColor = Color.white;
     [SerializeField] private Color warningColor = Color.red;
     [SerializeField] private float warningThreshold = 30f;
 
     [Header("Timer Flash (optional)")]
-    [Tooltip("Briefly flash the timer red when a penalty is applied.")]
     [SerializeField] private bool flashTimerOnPenalty = true;
     [SerializeField] private float flashDuration = 0.15f;
 
     [SyncVar(hook = nameof(OnTimerChanged))]
     private float timeRemaining;
+
+    [SyncVar(hook = nameof(OnGameOverChanged))]
+    private bool isGameOver = false;
 
     private bool isRunning = false;
     private Color lastKnownColor;
@@ -31,6 +33,7 @@ public class NetworkTimer : NetworkBehaviour
     {
         timeRemaining = startingTime;
         isRunning = true;
+        isGameOver = false;
         Debug.Log($"[Timer] Started: {startingTime}s");
     }
 
@@ -43,6 +46,7 @@ public class NetworkTimer : NetworkBehaviour
     {
         if (!isServer) return;
         if (!isRunning) return;
+        if (isGameOver) return;
 
         timeRemaining -= Time.deltaTime;
 
@@ -54,42 +58,31 @@ public class NetworkTimer : NetworkBehaviour
         }
     }
 
-    // -------- Penalty API --------
-
-    /// <summary>
-    /// Applies the default penalty (used by zombies).
-    /// </summary>
     [Server]
     public void ApplyPenalty()
     {
         ApplyPenalty(penaltySeconds);
     }
 
-    /// <summary>
-    /// Applies a custom penalty amount (used by traps).
-    /// </summary>
     [Server]
     public void ApplyPenalty(float amount)
     {
         if (!isServer) return;
+        if (isGameOver) return;
 
         timeRemaining = Mathf.Max(0f, timeRemaining - amount);
         Debug.Log($"[Timer] Penalty: -{amount}s → {timeRemaining:F1}s remaining");
 
-        // ✅ Tell all clients to show the "-30s" / "-5s" text
         RpcShowPenalty(amount);
     }
-
-    // -------- Reset --------
 
     [Server]
     public void ResetTimer()
     {
         timeRemaining = startingTime;
         isRunning = true;
+        isGameOver = false;
     }
-
-    // -------- UI Updates --------
 
     private void OnTimerChanged(float oldValue, float newValue)
     {
@@ -108,16 +101,12 @@ public class NetworkTimer : NetworkBehaviour
         timerText.color = lastKnownColor;
     }
 
-    // -------- Penalty Flash on Clients --------
-
     [ClientRpc]
     private void RpcShowPenalty(float amount)
     {
-        // ✅ Show the floating "-30s" text
         if (penaltyFlash != null)
             penaltyFlash.FlashPenalty(amount);
 
-        // ✅ Optional: briefly flash the timer red
         if (flashTimerOnPenalty && timerText != null)
             StartCoroutine(FlashTimerRoutine());
     }
@@ -130,14 +119,52 @@ public class NetworkTimer : NetworkBehaviour
         timerText.color = originalColor;
     }
 
-    // -------- Timer Expiry --------
+    // -------- Timer Expiry → Game Over --------
 
     [Server]
     private void OnTimerExpired()
     {
-        Debug.Log("[Timer] TIME'S UP!");
-        // Trigger game over scene, disable player input, etc.
+        if (isGameOver) return;
+
+        isGameOver = true;
+        Debug.Log("[Timer] TIME'S UP — Game Over");
+
+        // ✅ Tell all clients to freeze player controls
+        RpcDisablePlayerControls();
+    }
+
+    private void OnGameOverChanged(bool oldValue, bool newValue)
+    {
+        if (!newValue) return;
+
+        Debug.Log("[Timer] Game Over — showing failure UI");
+
+        if (GameOverUI.Instance != null)
+            GameOverUI.Instance.Show();
+        else
+            Debug.LogWarning("[Timer] GameOverUI.Instance is null!");
+    }
+
+    [ClientRpc]
+    private void RpcDisablePlayerControls()
+    {
+        Debug.Log("[Timer] RpcDisablePlayerControls received");
+
+        // ✅ Disable the local player's controller
+        foreach (var pc in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
+        {
+            if (pc.isLocalPlayer)
+            {
+                pc.DisableControls();
+                break;
+            }
+        }
+
+        // ✅ Ensure cursor is free for the UI button
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     public float GetTimeRemaining() => timeRemaining;
+    public bool IsGameOver() => isGameOver;
 }

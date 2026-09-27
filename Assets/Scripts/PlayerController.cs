@@ -11,8 +11,8 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float sprintMultiplier = 1.5f;
     [SerializeField] private float gravity = -9.81f;
-    [SerializeField] private float jumpHeight = 1.5f;        // ✅ NEW
-    [SerializeField] private KeyCode jumpKey = KeyCode.Space; // ✅ NEW
+    [SerializeField] private float jumpHeight = 1.5f;
+    [SerializeField] private KeyCode jumpKey = KeyCode.Space;
 
     [Header("Camera")]
     [SerializeField] private Transform playerCamera;
@@ -182,7 +182,6 @@ public class PlayerController : NetworkBehaviour
             if (characterController.isGrounded && verticalVelocity < 0)
                 verticalVelocity = -2f;
 
-            // ✅ JUMP — only when grounded
             if (characterController.isGrounded && Input.GetKeyDown(jumpKey))
             {
                 verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
@@ -317,6 +316,7 @@ public class PlayerController : NetworkBehaviour
     private void OnApplicationFocus(bool hasFocus)
     {
         if (!isLocalPlayer) return;
+        if (!enabled) return;    // ✅ skip when controls are disabled (game over)
 
         if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen) return;
         if (PauseMenu.IsPauseMenuOpen) return;
@@ -344,5 +344,17 @@ public class PlayerController : NetworkBehaviour
         if (isLocalPlayer) return;
 
         cachedTransform.rotation = Quaternion.Euler(0f, newValue, 0f);
+    }
+
+    // ✅ Called by NetworkTimer / MissionCompleteUI when the game ends
+    public void DisableControls()
+    {
+        enabled = false;
+
+        isCursorLocked = false;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+
+        Debug.Log($"[PlayerController] Controls disabled for player {netId}");
     }
 }

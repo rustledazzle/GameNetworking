@@ -53,14 +53,24 @@ public class CustomNetworkManager : NetworkManager
                 return;
             }
 
-            GameObject gamePlayer = Instantiate(
-                playerPrefab,
-                gamePlayerSpawnPosition,
-                Quaternion.identity
-            );
+            // ✅ Look for a tagged spawn point in the gameplay scene
+            Vector3 spawnPos = gamePlayerSpawnPosition;   // fallback
+            GameObject[] spawns = GameObject.FindGameObjectsWithTag("PlayerSpawn");
 
+            if (spawns.Length > 0)
+            {
+                int idx = (int)(conn.connectionId % (uint)spawns.Length);
+                spawnPos = spawns[idx].transform.position;
+                Debug.Log($"[CustomNetworkManager] Using spawn '{spawns[idx].name}' at {spawnPos}");
+            }
+            else
+            {
+                Debug.LogWarning("[CustomNetworkManager] No PlayerSpawn-tagged objects — using fallback");
+            }
+
+            GameObject gamePlayer = Instantiate(playerPrefab, spawnPos, Quaternion.identity);
             NetworkServer.AddPlayerForConnection(conn, gamePlayer);
-            Debug.Log($"[CustomNetworkManager] Spawned GamePlayer for {conn.connectionId} at {gamePlayerSpawnPosition}");
+            Debug.Log($"[CustomNetworkManager] Spawned GamePlayer for {conn.connectionId} at {spawnPos}");
         }
     }
 

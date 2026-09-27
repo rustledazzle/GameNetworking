@@ -9,12 +9,14 @@ public class HealthSystem : NetworkBehaviour
     [SyncVar] public float maxHealth = 100f;
 
     [Header("Respawn Settings")]
-    [SerializeField] private Transform[] spawnPoints;          // ✅ assign in Inspector
+    [SerializeField] private Transform[] spawnPoints;
     [SerializeField] private float respawnY = 0.3f;
     [SerializeField] private float respawnRange = 8f;
     [SerializeField] private float respawnHeightOffset = 0.5f;
+    [SerializeField] private float respawnDelay = 3f;
 
     private CharacterController characterController;
+    private bool isDead = false;
 
     public override void OnStartServer()
     {
@@ -46,6 +48,7 @@ public class HealthSystem : NetworkBehaviour
     public void TakeDamage(float damage)
     {
         if (!isServer) return;
+        if (isDead) return;
 
         health = Mathf.Max(0, health - damage);
         Debug.Log($"Health: {health}/{maxHealth}");
@@ -56,19 +59,58 @@ public class HealthSystem : NetworkBehaviour
 
     private void Die()
     {
-        Debug.Log($"Object died: {gameObject.name}");
+        Debug.Log($"[HealthSystem] {gameObject.name} died");
+        isDead = true;
 
-        if (GetComponent<PlayerController>() != null)
+        bool isPlayer = GetComponent<PlayerController>() != null;
+
+        if (isPlayer)
         {
-            // Hide / disable player while dead (optional)
-            SetPlayerActive(false);
+            ShowDeathScreenOnOwnerClientRpc();
 
-            Invoke(nameof(RespawnPlayer), 3f);
+            PlayerController pc = GetComponent<PlayerController>();
+            if (pc != null) pc.enabled = false;
+
+            Teleport(GetRespawnPosition());
+
+            if (isServer)
+                Invoke(nameof(RespawnPlayer), respawnDelay);
         }
         else
         {
             NetworkServer.Destroy(gameObject);
         }
+    }
+    [TargetRpc]
+    private void SyncPositionToOwnerClientRpc(Vector3 newPosition)
+    {
+        Debug.Log($"[HealthSystem] TargetRpc: SyncPosition received → {newPosition}");
+
+        CharacterController cc = GetComponent<CharacterController>();
+        bool hadController = cc != null && cc.enabled;
+
+        if (hadController)
+            cc.enabled = false;
+
+        transform.position = newPosition;
+
+        if (hadController)
+            cc.enabled = true;
+    }
+    [TargetRpc]
+    private void ShowDeathScreenOnOwnerClientRpc()
+    {
+        Debug.Log("[HealthSystem] TargetRpc: ShowDeathScreen received");
+        if (DeathScreenUI.Instance != null)
+            DeathScreenUI.Instance.ShowDeathScreen();
+    }
+
+    [TargetRpc]
+    private void HideDeathScreenOnOwnerClientRpc()
+    {
+        Debug.Log("[HealthSystem] TargetRpc: HideDeathScreen received");
+        if (DeathScreenUI.Instance != null)
+            DeathScreenUI.Instance.HideDeathScreen();
     }
 
     private void RespawnPlayer()
@@ -76,65 +118,73 @@ public class HealthSystem : NetworkBehaviour
         if (!isServer) return;
 
         Vector3 spawnPos = GetRespawnPosition();
+        Debug.Log($"[HealthSystem] Respawning {gameObject.name} at {spawnPos}");
+
         Teleport(spawnPos);
 
         health = maxHealth;
-        SetPlayerActive(true);
+        isDead = false;
 
-        Debug.Log($"Player respawned at {spawnPos}");
+        PlayerController pc = GetComponent<PlayerController>();
+        if (pc != null) pc.enabled = true;
+
+        HideDeathScreenOnOwnerClientRpc();
+
+        SyncPositionToOwnerClientRpc(spawnPos);
+        // ✅ Force the player's position to sync to clients via the existing
+        //    PlayerController position sync (CmdUpdatePosition runs every frame).
+        //    No NetworkTransform needed.
+
+        Debug.Log($"[HealthSystem] Respawned at {spawnPos}");
     }
 
     private Vector3 GetRespawnPosition()
     {
-        // ✅ Look up spawn points by the "Respawn" tag
-        GameObject[] spawns = GameObject.FindGameObjectsWithTag("Respawn");
+        if (spawnPoints != null && spawnPoints.Length > 0)
+        {
+            int idx = Random.Range(0, spawnPoints.Length);
+            return spawnPoints[idx].position;
+        }
 
+        GameObject[] spawns = GameObject.FindGameObjectsWithTag("Respawn");
         if (spawns.Length > 0)
         {
             int idx = Random.Range(0, spawns.Length);
+            Debug.Log($"[HealthSystem] Using tagged spawn '{spawns[idx].name}' at {spawns[idx].transform.position}");
             return spawns[idx].transform.position;
         }
 
-        // Fallback: random position near center
-        float x = Random.Range(-respawnRange, respawnRange);
-        float z = Random.Range(-respawnRange, respawnRange);
-        Vector3 origin = new Vector3(x, 10f, z);
+        Debug.LogWarning("[HealthSystem] No spawn points found — using SAFE fallback");
+        Vector3 origin = new Vector3(0f, 20f, 0f);
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 50f))
+            return new Vector3(0f, hit.point.y + 0.5f, 0f);
 
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 20f))
-            return new Vector3(x, hit.point.y + respawnHeightOffset, z);
-
-        return new Vector3(x, respawnY, z);
+        return new Vector3(0f, 5f, 0f);
     }
-    // ✅ Teleport properly (CharacterController safe)
+
     private void Teleport(Vector3 position)
     {
-        bool hadController = characterController != null;
+        if (characterController == null)
+            characterController = GetComponent<CharacterController>();
 
-        // Disable controller so it doesn't overwrite our position
+        bool hadController = characterController != null && characterController.enabled;
+
         if (hadController)
             characterController.enabled = false;
 
-        transform.position = position;
-
-        // Re-enable the controller
-        if (hadController)
-            characterController.enabled = true;
-
-        // ✅ Optionally reset velocity if you have a Rigidbody
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
             rb.velocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
+
+        transform.position = position;
+        transform.rotation = Quaternion.identity;
+
+        if (hadController)
+            characterController.enabled = true;
     }
 
-    private void SetPlayerActive(bool active)
-    {
-        // Optional: disable/enable player visuals / input
-        PlayerController pc = GetComponent<PlayerController>();
-        if (pc != null) pc.enabled = active;
-
-        // CharacterController affects physics; keep it on even while dead (adjust if needed)
-    }
+    public bool IsDead() => isDead;
 }
