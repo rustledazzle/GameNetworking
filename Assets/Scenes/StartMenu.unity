@@ -569,7 +569,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   wrap: {fileID: 964688715}
-  latency: 100
+  latency: 200
   jitter: 0
   jitterSpeed: 1
   unreliableLoss: 0

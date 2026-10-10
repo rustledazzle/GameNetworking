@@ -7,13 +7,6 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private float mouseSensitivity = 1.5f;
     [SerializeField] private float maxLookAngle = 80f;
 
-    [Header("Movement")]
-    [SerializeField] private float moveSpeed = 5f;
-    [SerializeField] private float sprintMultiplier = 1.5f;
-    [SerializeField] private float gravity = -9.81f;
-    [SerializeField] private float jumpHeight = 1.5f;
-    [SerializeField] private KeyCode jumpKey = KeyCode.Space;
-
     [Header("Camera")]
     [SerializeField] private Transform playerCamera;
     [SerializeField] private Vector3 cameraOffset = new Vector3(0, 1.7f, 0);
@@ -38,16 +31,12 @@ public class PlayerController : NetworkBehaviour
     private bool isInitialized = false;
     private Transform cachedTransform;
     private HealthSystem healthSystem;
-    private CharacterController characterController;
-    private float verticalVelocity = 0f;
-
-    private Vector3 moveDirection;
-    private float currentSpeed;
+    private PlayerMovement playerMovement;
 
     private void Awake()
     {
         cachedTransform = transform;
-        characterController = GetComponent<CharacterController>();
+        playerMovement = GetComponent<PlayerMovement>();
     }
 
     public override void OnStartServer()
@@ -105,10 +94,7 @@ public class PlayerController : NetworkBehaviour
                 cameraObj.transform.localPosition = cameraOffset;
                 cameraObj.transform.localRotation = Quaternion.identity;
                 cam = cameraObj.AddComponent<Camera>();
-
-                if (isLocalPlayer)
-                    cameraObj.AddComponent<AudioListener>();
-
+                if (isLocalPlayer) cameraObj.AddComponent<AudioListener>();
                 playerCamera = cameraObj.transform;
             }
             else
@@ -118,10 +104,8 @@ public class PlayerController : NetworkBehaviour
                 cam.transform.localRotation = Quaternion.identity;
 
                 AudioListener existing = cam.GetComponent<AudioListener>();
-                if (existing == null && isLocalPlayer)
-                    cam.gameObject.AddComponent<AudioListener>();
-                else if (existing != null && !isLocalPlayer)
-                    existing.enabled = false;
+                if (existing == null && isLocalPlayer) cam.gameObject.AddComponent<AudioListener>();
+                else if (existing != null && !isLocalPlayer) existing.enabled = false;
             }
         }
 
@@ -144,71 +128,15 @@ public class PlayerController : NetworkBehaviour
     {
         if (!isLocalPlayer || !isInitialized) return;
 
-        if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen)
-            return;
+        if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen) return;
+        if (PauseMenu.IsPauseMenuOpen) return;
 
-        if (PauseMenu.IsPauseMenuOpen)
-            return;
-
-        HandleMovement();
         HandleMouseLook();
         HandleShooting();
         HandleReload();
         HandleCursorLock();
 
         CmdUpdateRotation(cachedTransform.eulerAngles.y);
-    }
-
-    private void HandleMovement()
-    {
-        float horizontal = Input.GetAxis("Horizontal");
-        float vertical = Input.GetAxis("Vertical");
-
-        Vector3 forward = cachedTransform.forward;
-        Vector3 right = cachedTransform.right;
-
-        forward.y = 0;
-        right.y = 0;
-        forward.Normalize();
-        right.Normalize();
-
-        moveDirection = (forward * vertical + right * horizontal).normalized;
-
-        bool isSprinting = Input.GetKey(KeyCode.LeftShift);
-        currentSpeed = isSprinting ? moveSpeed * sprintMultiplier : moveSpeed;
-
-        if (characterController != null)
-        {
-            if (characterController.isGrounded && verticalVelocity < 0)
-                verticalVelocity = -2f;
-
-            if (characterController.isGrounded && Input.GetKeyDown(jumpKey))
-            {
-                verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
-            }
-
-            verticalVelocity += gravity * Time.deltaTime;
-
-            Vector3 move = moveDirection * currentSpeed;
-            move.y = verticalVelocity;
-
-            characterController.Move(move * Time.deltaTime);
-            CmdUpdatePosition(cachedTransform.position);
-        }
-        else
-        {
-            if (moveDirection.magnitude > 0.1f)
-            {
-                cachedTransform.position += moveDirection * currentSpeed * Time.deltaTime;
-                CmdUpdatePosition(cachedTransform.position);
-            }
-        }
-    }
-
-    [Command]
-    private void CmdUpdatePosition(Vector3 newPosition)
-    {
-        cachedTransform.position = newPosition;
     }
 
     private void HandleMouseLook()
@@ -236,24 +164,18 @@ public class PlayerController : NetworkBehaviour
             }
 
             nextFireTime = Time.time + fireRate;
-
-            if (playerHUD != null)
-                playerHUD.UseAmmo(ammoPerShot);
+            if (playerHUD != null) playerHUD.UseAmmo(ammoPerShot);
 
             Vector3 shootDir = playerCamera.forward;
             Vector3 spawnPos = playerCamera.position + shootDir * bulletSpawnOffset;
-
             CmdShoot(spawnPos, shootDir);
         }
     }
 
     private void HandleReload()
     {
-        if (Input.GetKeyDown(KeyCode.R))
-        {
-            if (playerHUD != null)
-                playerHUD.Reload();
-        }
+        if (Input.GetKeyDown(KeyCode.R) && playerHUD != null)
+            playerHUD.Reload();
     }
 
     [Command]
@@ -275,49 +197,33 @@ public class PlayerController : NetworkBehaviour
 
     private void HandleCursorLock()
     {
-        if (Input.GetKeyDown(KeyCode.Escape))
-            LockCursor(false);
-
-        if (Input.GetMouseButtonDown(0) && !isCursorLocked)
-            LockCursor(true);
+        if (Input.GetKeyDown(KeyCode.Escape)) LockCursor(false);
+        if (Input.GetMouseButtonDown(0) && !isCursorLocked) LockCursor(true);
     }
 
     private void LockCursor(bool locked)
     {
         isCursorLocked = locked;
-
-        if (locked)
-        {
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-        }
-        else
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
+        Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+        Cursor.visible = !locked;
     }
 
     public void TakeDamage(float damage)
     {
         if (!isLocalPlayer) return;
-
-        if (healthSystem != null)
-            CmdTakeDamage(damage);
+        if (healthSystem != null) CmdTakeDamage(damage);
     }
 
     [Command]
     private void CmdTakeDamage(float damage)
     {
-        if (healthSystem != null)
-            healthSystem.TakeDamage(damage);
+        if (healthSystem != null) healthSystem.TakeDamage(damage);
     }
 
     private void OnApplicationFocus(bool hasFocus)
     {
         if (!isLocalPlayer) return;
-        if (!enabled) return;    // ✅ skip when controls are disabled (game over)
-
+        if (!enabled) return;
         if (SimpleChat.Instance != null && SimpleChat.Instance.IsChatOpen) return;
         if (PauseMenu.IsPauseMenuOpen) return;
 
@@ -342,19 +248,16 @@ public class PlayerController : NetworkBehaviour
     private void OnRotationChanged(float oldValue, float newValue)
     {
         if (isLocalPlayer) return;
-
         cachedTransform.rotation = Quaternion.Euler(0f, newValue, 0f);
     }
 
-    // ✅ Called by NetworkTimer / MissionCompleteUI when the game ends
     public void DisableControls()
     {
         enabled = false;
+        if (playerMovement != null) playerMovement.SetDead(true);
 
         isCursorLocked = false;
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
-
-        Debug.Log($"[PlayerController] Controls disabled for player {netId}");
     }
 }

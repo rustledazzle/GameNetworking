@@ -134,10 +134,11 @@ GameObject:
   - component: {fileID: 1975966550098917715}
   - component: {fileID: 446831165273419911}
   - component: {fileID: -388558442391460929}
-  - component: {fileID: -5078738869468775032}
   - component: {fileID: 3528014088596587918}
   - component: {fileID: 5977179290792543273}
   - component: {fileID: 7946264508464766881}
+  - component: {fileID: 5024176726854165450}
+  - component: {fileID: 6667007371799441404}
   m_Layer: 0
   m_Name: Player 2
   m_TagString: Player
@@ -180,9 +181,6 @@ MonoBehaviour:
   syncInterval: 0
   mouseSensitivity: 1.5
   maxLookAngle: 80
-  moveSpeed: 5
-  sprintMultiplier: 1.5
-  gravity: -9.81
   playerCamera: {fileID: 0}
   cameraOffset: {x: 0, y: 1.7, z: 0}
   projectilePrefab: {fileID: 6613678652216019174, guid: b0bab35f5eadf744ebf2b30228803f8e, type: 3}
@@ -212,24 +210,7 @@ MonoBehaviour:
   respawnY: 0
   respawnRange: 8
   respawnHeightOffset: 0.5
---- !u!114 &-5078738869468775032
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3460019421182799571}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7a1e9d0151cf93242a3b475b2f8ac266, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  syncDirection: 0
-  syncMode: 0
-  syncInterval: 0
-  syncRate: 0.05
-  positionThreshold: 0.01
-  interpolationDuration: 0.1
+  respawnDelay: 3
 --- !u!136 &3528014088596587918
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -295,7 +276,48 @@ CharacterController:
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0.65, z: 0}
+  m_Center: {x: 0, y: 0.75, z: 0}
+--- !u!114 &5024176726854165450
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3460019421182799571}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e93413293baf42c449989061206cc6a6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  moveSpeed: 5
+  sprintMultiplier: 1.5
+  gravity: -30
+  jumpHeight: 1.5
+  clientPredictionEnabled: 1
+  tickRate: 0.033
+  togglePredictionKey: 112
+  showDebugOverlay: 1
+--- !u!114 &6667007371799441404
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3460019421182799571}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a1e9d0151cf93242a3b475b2f8ac266, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  syncRate: 0.033
+  positionThreshold: 0.01
+  interpolationDuration: 0.1
 --- !u!1001 &2417962978809453904
 PrefabInstance:
   m_ObjectHideFlags: 0

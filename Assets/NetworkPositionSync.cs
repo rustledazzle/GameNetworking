@@ -9,7 +9,6 @@ public class NetworkPositionSync : NetworkBehaviour
     [SerializeField] private float positionThreshold = 0.01f;
     [SerializeField] private float interpolationDuration = 0.1f;
 
-    // ✅ SyncVar with hook
     [SyncVar(hook = nameof(OnSyncedPositionChanged))]
     private Vector3 syncedPosition;
 
@@ -36,7 +35,7 @@ public class NetworkPositionSync : NetworkBehaviour
 
     void Update()
     {
-        // Only the local player sends position updates
+        // ✅ Only the local player sends position updates — ALWAYS
         if (!isLocalPlayer) return;
 
         timer += Time.deltaTime;
@@ -53,14 +52,13 @@ public class NetworkPositionSync : NetworkBehaviour
         }
     }
 
-    // Mirror Command: Client → Server
     [Command]
     private void CmdUpdatePosition(Vector3 newPos)
     {
         // Anti-cheat: reject large jumps
-        if (Vector3.Distance(transform.position, newPos) > 10f)
+        if (Vector3.Distance(transform.position, newPos) > 20f)
         {
-            Debug.LogWarning($"Rejected suspicious position update from {netId}");
+            Debug.LogWarning($"[NetworkPositionSync] Rejected suspicious jump from {netId}: {Vector3.Distance(transform.position, newPos):F1}m");
             return;
         }
 
@@ -68,10 +66,9 @@ public class NetworkPositionSync : NetworkBehaviour
         syncedPosition = newPos;
     }
 
-    // SyncVar hook: called on clients when syncedPosition changes
     private void OnSyncedPositionChanged(Vector3 oldValue, Vector3 newValue)
     {
-        // Skip if this is the local player (we already moved ourselves)
+        // Skip on the local player — prediction handles their own view
         if (isLocalPlayer) return;
 
         StopAllCoroutines();
